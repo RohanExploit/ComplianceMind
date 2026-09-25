@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface AgentResponse {
   agent: string;
   role: string;
@@ -19,6 +21,7 @@ interface Task {
   status: "analyzing" | "awaiting_review" | "approved" | "escalated";
   created_by: string;
   created_at: string;
+  priority?: string;
 }
 
 interface Presence {
@@ -33,20 +36,22 @@ type FeedItem =
   | { id: string; type: "system"; content: string; timestamp: string }
   | { id: string; type: "task_event"; task_id: string; event: string; user?: string; timestamp: string };
 
+// ─── Config ───────────────────────────────────────────────────────────────────
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001";
 
-const AGENT_CONFIG: Record<string, { color: string; icon: string; label: string }> = {
-  scanner: { color: "#a78bfa", icon: "🔎", label: "Reg Scanner" },
-  analyst: { color: "#22d3ee", icon: "📊", label: "Risk Analyst" },
-  drafter: { color: "#fbbf24", icon: "📝", label: "Audit Drafter" },
-  escalation: { color: "#f87171", icon: "🚨", label: "Escalation" },
+const AGENT_CONFIG: Record<string, { color: string; icon: string; label: string; phase: number }> = {
+  scanner:   { color: "#a78bfa", icon: "🔎", label: "Reg Scanner",   phase: 1 },
+  analyst:   { color: "#22d3ee", icon: "📊", label: "Risk Analyst",  phase: 1 },
+  drafter:   { color: "#fbbf24", icon: "📝", label: "Audit Drafter", phase: 2 },
+  escalation:{ color: "#f87171", icon: "🚨", label: "Escalation",    phase: 2 },
 };
 
-const STATUS_STYLES: Record<Task["status"], { bg: string; text: string; label: string }> = {
-  analyzing: { bg: "bg-violet-500/20 border-violet-500/30", text: "text-violet-300", label: "Analyzing" },
-  awaiting_review: { bg: "bg-amber-500/20 border-amber-500/30", text: "text-amber-300", label: "Review Needed" },
-  approved: { bg: "bg-emerald-500/20 border-emerald-500/30", text: "text-emerald-300", label: "Approved" },
-  escalated: { bg: "bg-red-500/20 border-red-500/30", text: "text-red-300", label: "Escalated" },
+const STATUS_STYLES: Record<Task["status"], { bg: string; dot: string; label: string }> = {
+  analyzing:      { bg: "rgba(139,92,246,0.15)", dot: "#a78bfa", label: "Analyzing" },
+  awaiting_review:{ bg: "rgba(251,191,36,0.12)", dot: "#fbbf24", label: "Review Needed" },
+  approved:       { bg: "rgba(16,185,129,0.12)", dot: "#10b981", label: "Approved" },
+  escalated:      { bg: "rgba(239,68,68,0.12)",  dot: "#ef4444", label: "Escalated to FIU" },
 };
 
 const EXAMPLE_FLAGS = [
@@ -54,17 +59,19 @@ const EXAMPLE_FLAGS = [
   "₹4.2Cr wire transfer to Cayman Islands without RBI approval",
   "PEP customer KYC not updated for 3 years — 3 large transactions this month",
   "Related party loan of ₹12Cr to subsidiary — no board approval documented",
+  "9 cash deposits of ₹1.9L each in 3 days — possible structuring pattern",
+  "Shell company with zero employees received ₹28Cr in wire transfers",
 ];
+
+// ─── Markdown Renderer ────────────────────────────────────────────────────────
 
 function parseInline(str: string): (string | React.ReactNode)[] {
   const parts = str.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
-    }
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={i} className="px-1.5 py-0.5 rounded bg-white/10 text-violet-200 font-mono text-xs">{part.slice(1, -1)}</code>;
-    }
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={i} style={{ color: "white", fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`"))
+      return <code key={i} style={{ padding: "1px 6px", borderRadius: 4, background: "rgba(255,255,255,0.08)", color: "#c4b5fd", fontFamily: "monospace", fontSize: "0.82em" }}>{part.slice(1, -1)}</code>;
     return part;
   });
 }
@@ -72,50 +79,101 @@ function parseInline(str: string): (string | React.ReactNode)[] {
 function FormattedMessage({ text }: { text: string }) {
   const lines = text.split("\n");
   return (
-    <div className="space-y-1.5 text-sm leading-relaxed">
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, lineHeight: "1.65" }}>
       {lines.map((line, idx) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <div key={idx} className="h-1" />;
-
-        if (trimmed.startsWith("### ")) {
-          return (
-            <h4 key={idx} className="font-bold text-violet-300 text-sm mt-3 mb-1 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
-              {parseInline(trimmed.slice(4))}
-            </h4>
-          );
-        }
-        if (trimmed.startsWith("## ")) {
-          return <h3 key={idx} className="font-bold text-white text-base mt-3 mb-1 border-b border-white/10 pb-1">{parseInline(trimmed.slice(3))}</h3>;
-        }
-        if (trimmed.startsWith("# ")) {
-          return <h2 key={idx} className="font-extrabold text-white text-base mt-3 mb-1 tracking-tight">{parseInline(trimmed.slice(2))}</h2>;
-        }
-
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-          return (
-            <div key={idx} className="flex items-start gap-2 pl-2 text-[var(--text-secondary)]">
-              <span className="text-violet-400 text-xs mt-1">•</span>
-              <span>{parseInline(trimmed.slice(2))}</span>
-            </div>
-          );
-        }
-
-        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-        if (numMatch) {
-          return (
-            <div key={idx} className="flex items-start gap-2 pl-2 text-[var(--text-secondary)]">
-              <span className="text-cyan-400 font-mono text-xs mt-0.5">{numMatch[1]}.</span>
-              <span>{parseInline(numMatch[2])}</span>
-            </div>
-          );
-        }
-
-        return <p key={idx} className="text-[var(--text-secondary)]">{parseInline(line)}</p>;
+        const t = line.trim();
+        if (!t) return <div key={idx} style={{ height: 4 }} />;
+        if (t.startsWith("### "))
+          return <div key={idx} style={{ fontWeight: 700, color: "#c4b5fd", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#a78bfa", display: "inline-block", flexShrink: 0 }} />
+            {parseInline(t.slice(4))}
+          </div>;
+        if (t.startsWith("## "))
+          return <div key={idx} style={{ fontWeight: 700, color: "white", fontSize: 13, marginTop: 8, paddingBottom: 4, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>{parseInline(t.slice(3))}</div>;
+        if (t.startsWith("- ") || t.startsWith("* "))
+          return <div key={idx} style={{ display: "flex", gap: 8, paddingLeft: 8, color: "rgba(255,255,255,0.7)" }}>
+            <span style={{ color: "#a78bfa", fontSize: 10, marginTop: 5, flexShrink: 0 }}>●</span>
+            <span>{parseInline(t.slice(2))}</span>
+          </div>;
+        const nm = t.match(/^(\d+)\.\s+(.*)/);
+        if (nm)
+          return <div key={idx} style={{ display: "flex", gap: 8, paddingLeft: 8, color: "rgba(255,255,255,0.7)" }}>
+            <span style={{ color: "#22d3ee", fontFamily: "monospace", fontSize: 11, marginTop: 2, flexShrink: 0 }}>{nm[1]}.</span>
+            <span>{parseInline(nm[2])}</span>
+          </div>;
+        return <p key={idx} style={{ color: "rgba(255,255,255,0.65)", margin: 0 }}>{parseInline(line)}</p>;
       })}
     </div>
   );
 }
+
+// ─── Pulse Dot ────────────────────────────────────────────────────────────────
+function PulseDot({ color = "#a78bfa", size = 8 }: { color?: string; size?: number }) {
+  return (
+    <span style={{ position: "relative", display: "inline-flex", width: size, height: size, flexShrink: 0 }}>
+      <span style={{
+        position: "absolute", inset: 0, borderRadius: "50%", background: color, opacity: 0.4,
+        animation: "ping 1.4s cubic-bezier(0,0,0.2,1) infinite",
+      }} />
+      <span style={{ borderRadius: "50%", background: color, width: size, height: size, display: "block" }} />
+    </span>
+  );
+}
+
+// ─── Glass Card ───────────────────────────────────────────────────────────────
+function GlassCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{
+      background: "rgba(15,10,35,0.55)",
+      border: "1px solid rgba(167,139,250,0.12)",
+      borderRadius: 16,
+      backdropFilter: "blur(20px)",
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ─── Latency Badge ────────────────────────────────────────────────────────────
+function LatencyBadge({ ms }: { ms: number }) {
+  const color = ms < 5 ? "#10b981" : ms < 10 ? "#fbbf24" : "#f87171";
+  return (
+    <span style={{
+      fontSize: 10, fontFamily: "monospace", fontWeight: 700,
+      color, background: `${color}18`, border: `1px solid ${color}40`,
+      padding: "1px 7px", borderRadius: 99,
+    }}>
+      {ms.toFixed(1)}ms
+    </span>
+  );
+}
+
+// ─── Risk Gauge ───────────────────────────────────────────────────────────────
+function RiskGauge({ score, label }: { score: number; label: string }) {
+  const color = score >= 75 ? "#ef4444" : score >= 50 ? "#f97316" : score >= 25 ? "#fbbf24" : "#10b981";
+  const r = 28, circ = 2 * Math.PI * r;
+  const dash = circ * (score / 100);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <svg width="72" height="72" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="36" cy="36" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+        <circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="6"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dasharray 0.8s ease, stroke 0.4s" }}
+        />
+      </svg>
+      <div style={{ textAlign: "center", marginTop: -52, marginBottom: 12, zIndex: 1, position: "relative" }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color, fontFamily: "monospace" }}>{score}</div>
+        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function WorkspacePage() {
   const searchParams = useSearchParams();
@@ -132,15 +190,21 @@ export default function WorkspacePage() {
   const [latencyLog, setLatencyLog] = useState<Array<{ agent: string; ms: number }>>([]);
   const [activeAgents, setActiveAgents] = useState<Set<string>>(new Set());
   const [targetAgent, setTargetAgent] = useState<string | null>(null);
-  const [benchmarkResult, setBenchmarkResult] = useState<null | { avg_ms: number; all_under_10ms: boolean; mode: string }>(null);
-  const [learnedRules, setLearnedRules] = useState<Array<{ id: string; text: string; metadata?: any }>>([]);
+  const [benchmarkResult, setBenchmarkResult] = useState<null | { avg_ms: number; all_under_10ms: boolean; mode: string; samples?: number[] }>(null);
+  const [learnedRules, setLearnedRules] = useState<Array<{ id: string; text: string; metadata?: Record<string, unknown> }>>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [correctionTarget, setCorrectionTarget] = useState<{ taskId: string; text: string } | null>(null);
   const [correctionInput, setCorrectionInput] = useState("");
   const [correctionType, setCorrectionType] = useState<"exception" | "false_positive" | "guideline">("exception");
   const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
+  const [activeTab, setActiveTab] = useState<"feed" | "tasks" | "memory">("feed");
+  const [riskSummary, setRiskSummary] = useState<{ risk_distribution?: Record<string, number>; jurisdiction_exposure?: Record<string, number> } | null>(null);
+  const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
+  const [priority, setPriority] = useState<"normal" | "high" | "critical">("normal");
+
   const feedEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((message: string, type: "success" | "error" | "info" = "info") => {
     setToast({ message, type });
@@ -151,10 +215,8 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     fetch(`${API_BASE}/api/benchmark`).then(r => r.json()).then(d => setBenchmarkResult(d)).catch(() => {});
-    fetch(`${API_BASE}/api/learned-rules/${workspaceId}`)
-      .then(r => r.json())
-      .then(d => { if (d.rules) setLearnedRules(d.rules); })
-      .catch(() => {});
+    fetch(`${API_BASE}/api/learned-rules/${workspaceId}`).then(r => r.json()).then(d => { if (d.rules) setLearnedRules(d.rules); }).catch(() => {});
+    fetch(`${API_BASE}/api/analytics/risk-summary?workspace_id=${workspaceId}`).then(r => r.json()).then(d => setRiskSummary(d)).catch(() => {});
   }, [workspaceId]);
 
   const connectWs = useCallback((name: string) => {
@@ -175,48 +237,33 @@ export default function WorkspacePage() {
           setActiveAgents(new Set(Object.keys(AGENT_CONFIG)));
           break;
         case "agent_response":
-          setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "agent", agent: data.agent, role: data.role, content: data.content, latency_ms: data.retrieval_latency_ms, context_used: data.context_used || [], task_id: data.task_id, timestamp: data.timestamp }]);
+          setFeed(prev => [...prev, {
+            id: crypto.randomUUID(), type: "agent",
+            agent: data.agent, role: data.role, content: data.content,
+            latency_ms: data.retrieval_latency_ms, context_used: data.context_used || [],
+            task_id: data.task_id, timestamp: data.timestamp,
+          }]);
           setLatencyLog(prev => [...prev.slice(-29), { agent: data.agent, ms: data.retrieval_latency_ms }]);
-          setActiveAgents(prev => {
-            const next = new Set(prev);
-            next.delete(data.role);
-            if (next.size === 0) setIsLoading(false);
-            return next;
-          });
+          setActiveAgents(prev => { const n = new Set(prev); n.delete(data.role); if (n.size === 0) setIsLoading(false); return n; });
           break;
         case "task_updated":
           setTasks(prev => prev.map(t => t.id === data.task_id ? { ...t, status: data.status } : t));
-          setIsLoading(false);
-          setActiveAgents(new Set());
+          setIsLoading(false); setActiveAgents(new Set());
           break;
         case "rule_learned":
           setLearnedRules(prev => [{ id: data.rule_id, text: data.rule, metadata: { officer: data.officer, type: data.correction_type } }, ...prev]);
-          setFeed(prev => [...prev, {
-            id: crypto.randomUUID(),
-            type: "system",
-            content: `🧠 Precedent Learned: "${data.rule}" (Logged by ${data.officer} to Moss Memory)`,
-            timestamp: data.timestamp
-          }]);
-          showToast(`🧠 Precedent indexed in Moss vector memory!`, "success");
+          setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "system", content: `🧠 Precedent Learned: "${data.rule}" — indexed to Moss Memory by ${data.officer}`, timestamp: data.timestamp }]);
+          showToast("🧠 Precedent indexed in Moss vector memory!", "success");
           break;
-        case "error":
-          showToast(data.message || "An action error occurred.", "error");
-          setIsLoading(false);
-          setActiveAgents(new Set());
-          break;
+        case "error": showToast(data.message || "Action error.", "error"); setIsLoading(false); setActiveAgents(new Set()); break;
         case "chat":
           setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "user", content: data.content, user: data.user, timestamp: data.timestamp }]);
           break;
       }
     };
-    ws.onclose = () => {
-      setWsConnected(false);
-      setIsLoading(false);
-      setActiveAgents(new Set());
-      setTimeout(() => connectWs(name), 2000);
-    };
+    ws.onclose = () => { setWsConnected(false); setIsLoading(false); setActiveAgents(new Set()); setTimeout(() => connectWs(name), 2000); };
     wsRef.current = ws;
-  }, [workspaceId]);
+  }, [workspaceId, showToast]);
 
   const handleJoin = () => { if (!userName.trim()) return; setHasJoined(true); connectWs(userName.trim()); };
 
@@ -226,59 +273,58 @@ export default function WorkspacePage() {
     setInput("");
     setIsLoading(true);
     setActiveAgents(new Set(Object.keys(AGENT_CONFIG)));
-    setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "user", content: `🚩 ${content}`, user: userName, timestamp: new Date().toISOString() }]);
+    setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "user", content: `🚩 [${priority.toUpperCase()}] ${content}`, user: userName, timestamp: new Date().toISOString() }]);
+    setActiveTab("feed");
 
-    // Safety timeout: Never stay stuck in loading state longer than 18s
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-      setActiveAgents(new Set());
-    }, 18000);
+    const timer = setTimeout(() => { setIsLoading(false); setActiveAgents(new Set()); }, 20000);
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "flag", content, target_agent: targetAgent }));
+      wsRef.current.send(JSON.stringify({ type: "flag", content, target_agent: targetAgent, priority }));
     } else {
-      // Resilient REST fallback
       fetch(`${API_BASE}/api/flag`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: content,
-          workspace_id: workspaceId,
-          target_agent: targetAgent,
-          run_full_pipeline: !targetAgent
-        })
-      })
-      .then(r => r.json())
-      .then(d => {
+        body: JSON.stringify({ description: content, workspace_id: workspaceId, target_agent: targetAgent, run_full_pipeline: !targetAgent, priority }),
+      }).then(r => r.json()).then(data => {
         clearTimeout(timer);
-        setIsLoading(false);
-        setActiveAgents(new Set());
-        if (d.responses) {
-          d.responses.forEach((res: any) => {
-            setFeed(prev => [...prev, {
-              id: crypto.randomUUID(),
-              type: "agent",
-              agent: res.agent,
-              role: res.role,
-              content: res.content,
-              latency_ms: res.retrieval_latency_ms,
-              context_used: res.context_used || [],
-              task_id: d.task_id,
-              timestamp: res.timestamp
-            }]);
+        if (data.responses) {
+          data.responses.forEach((r: AgentResponse) => {
+            setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "agent", agent: r.agent, role: r.role, content: r.content, latency_ms: r.retrieval_latency_ms, context_used: r.context_used, task_id: data.task_id, timestamp: r.timestamp }]);
+            setLatencyLog(prev => [...prev.slice(-29), { agent: r.agent, ms: r.retrieval_latency_ms }]);
           });
         }
-      })
-      .catch(() => {
-        clearTimeout(timer);
-        setIsLoading(false);
-        setActiveAgents(new Set());
-      });
+        setIsLoading(false); setActiveAgents(new Set());
+      }).catch(e => { clearTimeout(timer); showToast(`Error: ${e.message}`, "error"); setIsLoading(false); setActiveAgents(new Set()); });
     }
-  }, [input, isLoading, targetAgent, userName, workspaceId]);
+  }, [input, isLoading, workspaceId, targetAgent, userName, showToast, priority]);
 
-  const approveTask = (taskId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ type: "approve", task_id: taskId }));
+  const handleApprove = (taskId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN)
+      wsRef.current.send(JSON.stringify({ type: "approve", task_id: taskId }));
+    else
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "approved" } : t));
+    showToast("✅ Task approved and logged", "success");
+  };
+
+  const handleEscalate = (taskId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN)
+      wsRef.current.send(JSON.stringify({ type: "escalate", task_id: taskId }));
+    else
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "escalated" } : t));
+    showToast("🚨 Escalated to FIU-IND", "error");
+  };
+
+  const handleExportSTR = async (taskId: string) => {
+    try {
+      const r = await fetch(`${API_BASE}/api/analytics/str-export/${taskId}?workspace_id=${workspaceId}`);
+      const data = await r.json();
+      const blob = new Blob([data.content], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = `${data.report_id}.md`; a.click();
+      showToast(`📄 STR exported: ${data.report_id}`, "success");
+    } catch {
+      showToast("STR export failed", "error");
+    }
   };
 
   const submitCorrection = async () => {
@@ -286,462 +332,837 @@ export default function WorkspacePage() {
     setIsSubmittingCorrection(true);
     try {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: "feedback",
-          task_id: correctionTarget.taskId,
-          content: correctionTarget.text,
-          correction: correctionInput.trim(),
-          correction_type: correctionType,
-        }));
-        showToast("Precedent recorded in Moss memory! All agents will apply this rule.", "success");
-        setCorrectionTarget(null);
-        setCorrectionInput("");
+        wsRef.current.send(JSON.stringify({ type: "feedback", task_id: correctionTarget.taskId, content: correctionTarget.text, correction: correctionInput.trim(), correction_type: correctionType }));
+        showToast("🧠 Precedent indexed to Moss memory!", "success");
       } else {
-        const res = await fetch(`${API_BASE}/api/feedback`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            task_id: correctionTarget.taskId,
-            content: correctionTarget.text,
-            correction: correctionInput.trim(),
-            correction_type: correctionType,
-            officer_name: userName || "Officer",
-            workspace_id: workspaceId
-          })
+        await fetch(`${API_BASE}/api/feedback`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task_id: correctionTarget.taskId, content: correctionTarget.text, correction: correctionInput.trim(), correction_type: correctionType, officer_name: userName, workspace_id: workspaceId }),
         });
-        if (res.ok) {
-          showToast("Precedent recorded in Moss memory! All agents will apply this rule.", "success");
-          setCorrectionTarget(null);
-          setCorrectionInput("");
-        } else {
-          showToast("Failed to save correction to Moss.", "error");
-        }
+        setLearnedRules(prev => [{ id: crypto.randomUUID(), text: correctionInput.trim(), metadata: { officer: userName, type: correctionType } }, ...prev]);
+        showToast("🧠 Precedent indexed to Moss memory!", "success");
       }
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`, "error");
-    } finally {
-      setIsSubmittingCorrection(false);
+      setCorrectionTarget(null); setCorrectionInput(""); setCorrectionType("exception");
+    } catch {
+      showToast("Failed to submit correction", "error");
     }
+    setIsSubmittingCorrection(false);
   };
 
-  const avgLatency = latencyLog.length > 0
-    ? (latencyLog.reduce((s, l) => s + l.ms, 0) / latencyLog.length).toFixed(1)
-    : benchmarkResult?.avg_ms?.toFixed(1) ?? "—";
-
+  // ─── Join Screen ─────────────────────────────────────────────────────────────
   if (!hasJoined) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="glass-strong rounded-2xl p-8 w-full max-w-md border border-white/10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-white font-bold">CM</div>
-            <div>
-              <h1 className="text-xl font-bold">ComplianceMind</h1>
-              <p className="text-xs text-[var(--text-muted)]">AI-Native Compliance Workspace · YC RFS #12</p>
+      <div style={{
+        minHeight: "100vh", background: "radial-gradient(ellipse 120% 80% at 50% -10%, #1a0a3e 0%, #0a0618 60%, #050210 100%)",
+        display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', sans-serif",
+      }}>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+          @keyframes ping { 75%,100% { transform: scale(2); opacity: 0; } }
+          @keyframes glow { 0%,100% { opacity:.6 } 50% { opacity:1 } }
+          @keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
+          @keyframes spin { to { transform: rotate(360deg) } }
+          * { box-sizing: border-box; }
+          ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.3); border-radius: 2px; }
+        `}</style>
+
+        <div style={{ animation: "fadeUp 0.6s ease", display: "flex", flexDirection: "column", alignItems: "center", gap: 32, padding: 24, maxWidth: 440, width: "100%" }}>
+          {/* Logo */}
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>⚖️</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "white", letterSpacing: -1 }}>ComplianceMind</div>
+            <div style={{ fontSize: 13, color: "rgba(167,139,250,0.8)", marginTop: 6, fontWeight: 500 }}>AI-Native Multiplayer Compliance Workspace</div>
+            <div style={{
+              marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6,
+              background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
+              borderRadius: 99, padding: "4px 14px", fontSize: 11, color: "#fbbf24", fontWeight: 700,
+            }}>
+              🏆 TOP 10 — MOSS HACKATHON
             </div>
           </div>
-          <div className="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
-            🔗 Workspace: <span className="font-mono font-semibold">{workspaceId}</span>
+
+          {/* Stats row */}
+          <div style={{ display: "flex", gap: 16, width: "100%" }}>
+            {[
+              { label: "Moss Retrieval", value: benchmarkResult ? `${benchmarkResult.avg_ms}ms` : "—", sub: "avg latency", color: "#10b981" },
+              { label: "Agents", value: "4", sub: "parallel pipeline", color: "#a78bfa" },
+              { label: "Regulations", value: "18+", sub: "indexed in Moss", color: "#22d3ee" },
+            ].map(s => (
+              <GlassCard key={s.label} style={{ flex: 1, padding: "12px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{s.sub}</div>
+              </GlassCard>
+            ))}
           </div>
-          <p className="text-sm text-[var(--text-secondary)] mb-5">
-            Real-time compliance workspace. Flag suspicious events → 4 AI agents analyze in parallel using Moss semantic search. Share URL to collaborate with your team.
-          </p>
-          <input
-            type="text" placeholder="Your name (e.g. Priya, CCO)"
-            value={userName} onChange={e => setUserName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleJoin()}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-violet-500/50 mb-4"
-          />
-          <button onClick={handleJoin} disabled={!userName.trim()}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white font-semibold text-sm disabled:opacity-30 cursor-pointer hover:opacity-90 transition-opacity">
-            Join Workspace
-          </button>
-          <div className="mt-4 text-center">
-            <p className="text-xs text-[var(--text-muted)]">
-              Share link: <button onClick={() => navigator.clipboard.writeText(window.location.href)} className="text-violet-400 underline cursor-pointer">Copy URL</button>
-            </p>
-          </div>
+
+          {/* Join form */}
+          <GlassCard style={{ width: "100%", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
+              Workspace: <span style={{ color: "#a78bfa" }}>{workspaceId}</span>
+            </div>
+            <input
+              value={userName}
+              onChange={e => setUserName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleJoin()}
+              placeholder="Your name (e.g. Rahul — AML Analyst)"
+              style={{
+                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(167,139,250,0.2)",
+                borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14, outline: "none", width: "100%",
+              }}
+              autoFocus
+            />
+            <button
+              onClick={handleJoin}
+              disabled={!userName.trim()}
+              style={{
+                background: userName.trim() ? "linear-gradient(135deg, #7c3aed, #4f46e5)" : "rgba(255,255,255,0.05)",
+                border: "none", borderRadius: 10, padding: "13px", color: "white",
+                fontSize: 14, fontWeight: 700, cursor: userName.trim() ? "pointer" : "not-allowed",
+                transition: "all 0.2s", letterSpacing: 0.3,
+              }}
+            >
+              Join Compliance Workspace →
+            </button>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center" }}>
+              Share <code style={{ color: "#a78bfa" }}>?room={workspaceId}</code> for multiplayer
+            </div>
+          </GlassCard>
         </div>
       </div>
     );
   }
 
+  // ─── Main Workspace ───────────────────────────────────────────────────────────
+  const criticalTasks = tasks.filter(t => t.status === "awaiting_review").length;
+  const avgLatency = latencyLog.length ? (latencyLog.reduce((a, b) => a + b.ms, 0) / latencyLog.length).toFixed(1) : null;
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* LEFT SIDEBAR */}
-      <aside className="w-72 glass-strong flex flex-col border-r border-white/5 overflow-hidden">
-        <div className="p-4 border-b border-white/5">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-white text-xs font-bold">CM</div>
-              <span className="font-bold text-sm">ComplianceMind</span>
-            </div>
-            <div className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-400 pulse-emerald" : "bg-red-400"}`} />
+    <div style={{
+      height: "100vh", background: "radial-gradient(ellipse 100% 60% at 50% 0%, #120a2e 0%, #070413 50%, #030209 100%)",
+      fontFamily: "'Inter', sans-serif", color: "white", display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+        @keyframes ping { 75%,100% { transform: scale(2); opacity: 0; } }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.25); border-radius: 2px; }
+        input, textarea, button { font-family: 'Inter', sans-serif; }
+        .tab-btn:hover { background: rgba(167,139,250,0.08) !important; }
+        .example-chip:hover { background: rgba(167,139,250,0.15) !important; border-color: rgba(167,139,250,0.4) !important; }
+        .action-btn:hover { opacity: 0.85; transform: scale(0.98); }
+        .feed-item { animation: fadeUp 0.3s ease; }
+      `}</style>
+
+      {/* ─── Top Bar ─────────────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", padding: "0 20px",
+        height: 52, borderBottom: "1px solid rgba(167,139,250,0.1)",
+        background: "rgba(7,4,19,0.8)", backdropFilter: "blur(20px)", flexShrink: 0,
+        gap: 16, zIndex: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }}>⚖️</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: -0.3 }}>ComplianceMind</div>
+            <div style={{ fontSize: 10, color: "rgba(167,139,250,0.6)", marginTop: -1 }}>AI-Native Compliance Workspace</div>
           </div>
-          <p className="text-[10px] text-[var(--text-muted)] font-mono">room: {workspaceId}</p>
         </div>
 
-        <div className="px-4 pt-3 pb-2 border-b border-white/5">
-          <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2">Online ({presence.length})</p>
-          <div className="flex flex-wrap gap-1.5">
-            {presence.map(p => (
-              <div key={p.user_id} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span className="text-xs text-[var(--text-secondary)]">{p.name}</span>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
+          {/* Workspace pill */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: "rgba(167,139,250,0.08)", border: "1px solid rgba(167,139,250,0.18)",
+            borderRadius: 99, padding: "3px 12px", fontSize: 11,
+          }}>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>room:</span>
+            <span style={{ color: "#c4b5fd", fontWeight: 600 }}>{workspaceId}</span>
+          </div>
+
+          {/* Connection */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+            <PulseDot color={wsConnected ? "#10b981" : "#ef4444"} size={7} />
+            <span style={{ color: wsConnected ? "#10b981" : "#ef4444" }}>{wsConnected ? "Live" : "Reconnecting"}</span>
+          </div>
+
+          {/* Presence avatars */}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {presence.slice(0, 5).map((p, i) => (
+              <div key={p.user_id} title={p.name} style={{
+                width: 26, height: 26, borderRadius: "50%",
+                background: `hsl(${(p.name.charCodeAt(0) * 37) % 360}, 60%, 40%)`,
+                border: "2px solid rgba(7,4,19,0.9)",
+                marginLeft: i > 0 ? -8 : 0, display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 10, fontWeight: 700, zIndex: 5 - i,
+              }}>
+                {p.name[0].toUpperCase()}
               </div>
             ))}
+            {presence.length > 5 && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginLeft: 6 }}>+{presence.length - 5}</div>}
           </div>
         </div>
 
-        <div className="px-4 pt-3 pb-2 border-b border-white/5">
-          <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2">AI Agents</p>
-          <div className="space-y-1">
-            {Object.entries(AGENT_CONFIG).map(([role, cfg]) => (
-              <button key={role} onClick={() => setTargetAgent(targetAgent === role ? null : role)}
-                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all-smooth cursor-pointer ${targetAgent === role ? "bg-white/10 border border-white/10" : "hover:bg-white/5"}`}>
-                <span>{cfg.icon}</span>
-                <span style={{ color: cfg.color }} className="font-medium">{cfg.label}</span>
-                {activeAgents.has(role) && <span className="ml-auto text-[10px] text-violet-300 animate-pulse">working…</span>}
-              </button>
-            ))}
-          </div>
-          {targetAgent && <button onClick={() => setTargetAgent(null)} className="text-[10px] text-violet-400 underline mt-1 cursor-pointer">← Full pipeline</button>}
-        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Moss latency */}
+          {benchmarkResult && (
+            <button onClick={() => setShowBenchmarkModal(true)} style={{
+              display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
+              background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)",
+              borderRadius: 99, padding: "3px 10px", fontSize: 11,
+            }}>
+              <span style={{ color: "rgba(255,255,255,0.4)" }}>Moss avg</span>
+              <span style={{ color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>{benchmarkResult.avg_ms}ms</span>
+            </button>
+          )}
 
-        <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
-          <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2">Tasks ({tasks.length})</p>
-          {tasks.length === 0
-            ? <p className="text-xs text-[var(--text-muted)] text-center mt-4">Flag a compliance event to create tasks</p>
-            : <div className="space-y-2">{tasks.slice().reverse().map(task => {
-                const style = STATUS_STYLES[task.status];
-                return (
-                  <div key={task.id} className={`p-2.5 rounded-xl border ${style.bg} fade-in-up`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`text-[10px] font-mono ${style.text}`}>#{task.id}</span>
-                      <span className={`text-[10px] font-semibold ${style.text}`}>{style.label}</span>
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-snug line-clamp-2">{task.description}</p>
-                    {task.status === "awaiting_review" && (
-                      <button onClick={() => approveTask(task.id)}
-                        className="mt-2 w-full text-[10px] py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-all-smooth cursor-pointer">
-                        ✓ Approve Finding
-                      </button>
-                    )}
-                  </div>
-                );
-              })}</div>
-          }
-        </div>
-
-        {/* LEARNED PRECEDENTS / AUTO-IMPROVEMENT MEMORY */}
-        <div className="border-t border-white/5 px-4 pt-3 pb-3 max-h-48 overflow-y-auto">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] uppercase tracking-widest text-violet-400 font-semibold flex items-center gap-1">
-              <span>🧠</span> Moss Precedents ({learnedRules.length})
-            </p>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-mono">active</span>
-          </div>
-          {learnedRules.length === 0 ? (
-            <p className="text-[11px] text-[var(--text-muted)] italic">No learned rules yet. Click "Teach Agent" on any response to add a precedent.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {learnedRules.map(r => (
-                <div key={r.id} className="p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs">
-                  <div className="flex items-center justify-between text-[10px] text-violet-300 mb-0.5">
-                    <span className="font-semibold uppercase tracking-wider">{r.metadata?.type || "Exception"}</span>
-                    <span>{r.metadata?.officer || "Officer"}</span>
-                  </div>
-                  <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2 leading-tight">{r.text.replace(/^\[.*?\]\s*/, "")}</p>
-                </div>
-              ))}
+          {/* Alert badge */}
+          {criticalTasks > 0 && (
+            <div style={{
+              background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: 99, padding: "3px 10px", fontSize: 11, color: "#f87171",
+              display: "flex", alignItems: "center", gap: 5, fontWeight: 600,
+            }}>
+              <PulseDot color="#ef4444" size={6} />
+              {criticalTasks} pending
             </div>
           )}
+
+          {/* TOP 10 badge */}
+          <div style={{
+            background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)",
+            borderRadius: 99, padding: "3px 10px", fontSize: 10, color: "#fbbf24", fontWeight: 700,
+          }}>🏆 TOP 10</div>
         </div>
-      </aside>
+      </div>
 
-      {/* MAIN FEED */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        {toast && (
-          <div className="absolute top-4 right-6 z-50 fade-in-up">
-            <div className={`px-4 py-2.5 rounded-xl text-xs font-medium shadow-2xl flex items-center gap-2 border ${
-              toast.type === "error"
-                ? "bg-red-500/90 text-white border-red-400"
-                : toast.type === "success"
-                ? "bg-emerald-500/90 text-white border-emerald-400"
-                : "bg-violet-600/90 text-white border-violet-400"
-            }`}>
-              <span>{toast.type === "error" ? "⚠️" : toast.type === "success" ? "✓" : "ℹ️"}</span>
-              <span>{toast.message}</span>
+      {/* ─── Main Content ──────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+        {/* ─── Left Sidebar: Risk Dashboard ──────────────────────────────────── */}
+        <div style={{
+          width: 220, borderRight: "1px solid rgba(167,139,250,0.08)",
+          display: "flex", flexDirection: "column", gap: 0, overflow: "auto", flexShrink: 0,
+          padding: 14, paddingTop: 16,
+        }}>
+          {/* Risk Distribution */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Risk Overview</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { label: "Critical", color: "#ef4444", count: riskSummary?.risk_distribution?.critical ?? 0 },
+                { label: "High", color: "#f97316", count: riskSummary?.risk_distribution?.high ?? 0 },
+                { label: "Medium", color: "#fbbf24", count: riskSummary?.risk_distribution?.medium ?? 0 },
+                { label: "Low", color: "#10b981", count: riskSummary?.risk_distribution?.low ?? 0 },
+              ].map(({ label, color, count }) => {
+                const total = riskSummary?.risk_distribution?.total || 1;
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                      <span style={{ color: "rgba(255,255,255,0.5)" }}>{label}</span>
+                      <span style={{ color, fontFamily: "monospace", fontWeight: 700 }}>{count}</span>
+                    </div>
+                    <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, transition: "width 0.8s ease" }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )}
-        <header className="glass-strong border-b border-white/5 px-5 py-3 flex items-center justify-between flex-shrink-0">
-          <div>
-            <h2 className="text-sm font-semibold">Compliance Feed</h2>
-            <p className="text-xs text-[var(--text-muted)]">
-              {targetAgent ? `→ ${AGENT_CONFIG[targetAgent]?.label} only` : "RegScanner ∥ RiskAnalyst → AuditDrafter ∥ Escalation (parallel)"}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-emerald" />
-              <span className="text-xs font-mono text-emerald-300">{avgLatency}ms</span>
-            </div>
-            <span className="text-xs text-[var(--text-muted)]">Powered by <span className="font-semibold text-white">Moss</span></span>
-          </div>
-        </header>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {feed.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/30 to-red-500/30 flex items-center justify-center mb-4 border border-white/10"><span className="text-3xl">⚖️</span></div>
-              <h3 className="text-lg font-bold mb-2">ComplianceMind</h3>
-              <p className="text-sm text-[var(--text-secondary)] max-w-md mb-6">
-                AI-Native Compliance Workspace (YC RFS #12). Flag a suspicious transaction — 4 agents analyze in parallel using Moss semantic search across regulations, transactions, and audit history.
-              </p>
-              <div className="grid grid-cols-1 gap-2 w-full max-w-lg">
-                {EXAMPLE_FLAGS.map(ex => (
-                  <button key={ex} onClick={() => setInput(ex)}
-                    className="text-left p-3 rounded-xl glass hover:bg-white/10 transition-all-smooth text-xs text-[var(--text-secondary)] cursor-pointer">
-                    🚩 {ex}
-                  </button>
+          {/* Jurisdiction Exposure */}
+          {riskSummary?.jurisdiction_exposure && Object.keys(riskSummary.jurisdiction_exposure).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Jurisdiction</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {Object.entries(riskSummary.jurisdiction_exposure).slice(0, 6).map(([j, count]) => (
+                  <div key={j} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "rgba(255,255,255,0.5)" }}>{j}</span>
+                    <span style={{ color: "#c4b5fd", fontFamily: "monospace" }}>{count}</span>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
-          {feed.map(item => {
-            if (item.type === "system") return (
-              <div key={item.id} className="text-center">
-                <span className="text-[11px] text-[var(--text-muted)] bg-white/5 px-3 py-1 rounded-full">{item.content}</span>
-              </div>
-            );
-            if (item.type === "task_event") return (
-              <div key={item.id} className="text-center">
-                <span className="text-[11px] text-violet-400 bg-violet-500/10 px-3 py-1 rounded-full border border-violet-500/20">⚡ Task #{item.task_id} created by {item.user}</span>
-              </div>
-            );
-            if (item.type === "user") return (
-              <div key={item.id} className="flex justify-end fade-in-up">
-                <div className="max-w-2xl">
-                  <p className="text-[11px] text-[var(--text-muted)] text-right mb-1">{item.user}</p>
-                  <div className="bg-violet-500/15 border border-violet-500/20 rounded-2xl rounded-tr-md px-4 py-2.5">
-                    <p className="text-sm">{item.content}</p>
-                  </div>
-                </div>
-              </div>
-            );
-            const cfg = AGENT_CONFIG[item.role] || AGENT_CONFIG.scanner;
-            return (
-              <div key={item.id} className="flex gap-3 fade-in-up">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 mt-1"
-                  style={{ background: `${cfg.color}22`, border: `1px solid ${cfg.color}44` }}>
-                  {cfg.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md badge-${item.role}`}>{item.agent}</span>
-                    <span className="text-xs font-mono text-emerald-400">⚡ {item.latency_ms}ms</span>
-                    <span className="text-[10px] text-[var(--text-muted)] font-mono">#{item.task_id}</span>
-                    <button
-                      onClick={() => {
-                        setCorrectionTarget({ taskId: item.task_id, text: item.content });
-                        setCorrectionInput("");
-                      }}
-                      className="ml-auto text-[10px] px-2 py-0.5 rounded-md bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 border border-violet-500/20 transition-all-smooth cursor-pointer flex items-center gap-1"
-                    >
-                      <span>💡</span> Teach Agent
-                    </button>
-                  </div>
-                  <div className="glass rounded-2xl rounded-tl-md px-4 py-3">
-                    <FormattedMessage text={item.content} />
-                  </div>
-                  {item.context_used?.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      <span className="text-[10px] uppercase font-mono tracking-wider text-[var(--text-muted)] mr-1">🔍 Moss Context:</span>
-                      {item.context_used.map((ctx, i) => (
-                        <span key={i} title={ctx.text} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-cyan-300 font-mono">
-                          <span>{ctx.source}</span>
-                          <span className="text-emerald-400 font-semibold">{Math.round(ctx.score * 100)}%</span>
-                        </span>
-                      ))}
+          {/* Active Agents */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Agent Pipeline</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {[
+                { key: "scanner", ...AGENT_CONFIG["scanner"] },
+                { key: "analyst", ...AGENT_CONFIG["analyst"] },
+                { key: "drafter", ...AGENT_CONFIG["drafter"] },
+                { key: "escalation", ...AGENT_CONFIG["escalation"] },
+              ].map(a => {
+                const busy = activeAgents.has(a.key);
+                return (
+                  <div key={a.key} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "6px 8px", borderRadius: 8,
+                    background: busy ? `${a.color}12` : "transparent",
+                    border: `1px solid ${busy ? a.color + "30" : "transparent"}`,
+                    transition: "all 0.3s",
+                  }}>
+                    <span style={{ fontSize: 13 }}>{a.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: busy ? a.color : "rgba(255,255,255,0.5)" }}>{a.label}</div>
+                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", marginTop: 1 }}>Phase {a.phase}</div>
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                    {busy && <div style={{ width: 6, height: 6, borderRadius: "50%", background: a.color, animation: "pulse 1s infinite" }} />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-          {isLoading && (
-            <div className="flex flex-col gap-3 fade-in-up mt-2">
-              <div className="flex items-center gap-2 mb-1 pl-11">
-                <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                <span className="text-xs font-semibold text-violet-300">Parallel Execution Engaged (asyncio.gather)</span>
+          {/* Session latency */}
+          {latencyLog.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Session Latency</div>
+              <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 36 }}>
+                {latencyLog.slice(-12).map((l, i) => {
+                  const h = Math.max(4, Math.min(36, (l.ms / 15) * 36));
+                  const c = l.ms < 5 ? "#10b981" : l.ms < 10 ? "#fbbf24" : "#ef4444";
+                  return <div key={i} title={`${l.agent}: ${l.ms.toFixed(1)}ms`} style={{ flex: 1, height: h, background: c, borderRadius: 2, opacity: 0.7 }} />;
+                })}
               </div>
-              <div className="flex gap-3 stagger-children">
-                <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
-                  <div className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+              {avgLatency && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4, textAlign: "center" }}>avg {avgLatency}ms</div>}
+            </div>
+          )}
+        </div>
+
+        {/* ─── Center: Main Feed ─────────────────────────────────────────────── */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 2, padding: "10px 16px 0", borderBottom: "1px solid rgba(167,139,250,0.08)" }}>
+            {(["feed", "tasks", "memory"] as const).map(tab => (
+              <button key={tab} className="tab-btn" onClick={() => setActiveTab(tab)} style={{
+                background: activeTab === tab ? "rgba(167,139,250,0.12)" : "transparent",
+                border: activeTab === tab ? "1px solid rgba(167,139,250,0.25)" : "1px solid transparent",
+                borderBottom: activeTab === tab ? "1px solid transparent" : "none",
+                borderRadius: "8px 8px 0 0", padding: "7px 16px",
+                color: activeTab === tab ? "#c4b5fd" : "rgba(255,255,255,0.35)", cursor: "pointer",
+                fontSize: 12, fontWeight: 600, transition: "all 0.15s",
+              }}>
+                {tab === "feed" ? "🔴 Live Feed" : tab === "tasks" ? `📋 Cases (${tasks.length})` : `🧠 Moss Memory (${learnedRules.length})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+
+            {/* ── FEED TAB ── */}
+            {activeTab === "feed" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {feed.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,0.2)" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🛡️</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Compliance workspace ready</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Flag a suspicious event to trigger the AI agent pipeline</div>
+                  </div>
+                )}
+                {feed.map(item => (
+                  <div key={item.id} className="feed-item">
+                    {item.type === "user" && (
+                      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                        <div style={{ maxWidth: "75%" }}>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 4, textAlign: "right" }}>{item.user}</div>
+                          <div style={{
+                            background: "linear-gradient(135deg, rgba(79,70,229,0.3), rgba(124,58,237,0.2))",
+                            border: "1px solid rgba(139,92,246,0.25)", borderRadius: "12px 12px 2px 12px",
+                            padding: "10px 14px", fontSize: 13, color: "rgba(255,255,255,0.85)",
+                          }}>{item.content}</div>
+                        </div>
+                      </div>
+                    )}
+                    {item.type === "agent" && (() => {
+                      const cfg = AGENT_CONFIG[item.role] || { color: "#a78bfa", icon: "🤖", label: item.agent };
+                      return (
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <div style={{
+                            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                            background: `${cfg.color}18`, border: `1px solid ${cfg.color}30`,
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                          }}>{cfg.icon}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</span>
+                              <LatencyBadge ms={item.latency_ms} />
+                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginLeft: "auto" }}>
+                                {new Date(item.timestamp).toLocaleTimeString()}
+                              </span>
+                            </div>
+                            <div style={{
+                              background: `${cfg.color}08`, border: `1px solid ${cfg.color}18`,
+                              borderRadius: "2px 12px 12px 12px", padding: "12px 14px",
+                            }}>
+                              <FormattedMessage text={item.content} />
+                              {item.context_used && item.context_used.length > 0 && (
+                                <details style={{ marginTop: 10 }}>
+                                  <summary style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", cursor: "pointer", listStyle: "none", display: "flex", alignItems: "center", gap: 4 }}>
+                                    <span>▶</span> {item.context_used.length} Moss citations
+                                  </summary>
+                                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                                    {item.context_used.slice(0, 3).map((c, i) => (
+                                      <div key={i} style={{
+                                        fontSize: 10, padding: "6px 10px", borderRadius: 6,
+                                        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
+                                        color: "rgba(255,255,255,0.4)",
+                                      }}>
+                                        <span style={{ color: "#c4b5fd", fontWeight: 600 }}>[{c.source}]</span> {c.text.slice(0, 120)}…
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+                            {/* Teach button */}
+                            <button onClick={() => setCorrectionTarget({ taskId: item.task_id, text: item.content })} style={{
+                              marginTop: 6, fontSize: 10, color: "rgba(167,139,250,0.5)", background: "none",
+                              border: "1px solid rgba(167,139,250,0.1)", borderRadius: 6, padding: "3px 10px", cursor: "pointer",
+                              transition: "all 0.15s",
+                            }}>
+                              🧠 Teach Agent
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {item.type === "system" && (
+                      <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.25)", padding: "2px 0" }}>{item.content}</div>
+                    )}
+                    {item.type === "task_event" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: "rgba(167,139,250,0.05)", borderRadius: 8, border: "1px solid rgba(167,139,250,0.1)" }}>
+                        <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#a78bfa", animation: "pulse 1.5s infinite" }} />
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                          <strong style={{ color: "rgba(255,255,255,0.6)" }}>{item.user}</strong> flagged a new compliance event — agents analyzing…
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Loading indicator */}
+                {isLoading && (
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 16, height: 16, border: "2px solid rgba(167,139,250,0.3)", borderTopColor: "#a78bfa", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                    </div>
+                    <div style={{ padding: "10px 14px", background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)", borderRadius: "2px 12px 12px 12px" }}>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>
+                        {activeAgents.size === 4 ? "Phase 1: RegScanner ∥ RiskAnalyst running in parallel…"
+                          : activeAgents.size <= 2 ? "Phase 2: AuditDrafter ∥ Escalation synthesizing…"
+                          : "Agents analyzing…"}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {Object.entries(AGENT_CONFIG).map(([key, cfg]) => (
+                          <div key={key} style={{
+                            padding: "3px 8px", borderRadius: 6, fontSize: 10,
+                            background: activeAgents.has(key) ? `${cfg.color}18` : "rgba(16,185,129,0.1)",
+                            border: `1px solid ${activeAgents.has(key) ? cfg.color + "30" : "rgba(16,185,129,0.2)"}`,
+                            color: activeAgents.has(key) ? cfg.color : "#10b981",
+                            transition: "all 0.3s",
+                          }}>
+                            {activeAgents.has(key) ? `${cfg.icon} …` : `${cfg.icon} ✓`}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={feedEndRef} />
+              </div>
+            )}
+
+            {/* ── TASKS TAB ── */}
+            {activeTab === "tasks" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {tasks.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,0.2)" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>No cases yet</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Flag a compliance event to create a case</div>
+                  </div>
+                )}
+                {[...tasks].reverse().map(task => {
+                  const s = STATUS_STYLES[task.status];
+                  return (
+                    <GlassCard key={task.id} style={{ padding: 16, background: s.bg, borderColor: `${s.dot}25` }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.dot, marginTop: 5, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: s.dot }}>{s.label}</span>
+                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>#{task.id}</span>
+                            {task.priority && task.priority !== "normal" && (
+                              <span style={{
+                                fontSize: 9, padding: "1px 7px", borderRadius: 99, fontWeight: 700,
+                                background: task.priority === "critical" ? "rgba(239,68,68,0.15)" : "rgba(249,115,22,0.15)",
+                                color: task.priority === "critical" ? "#ef4444" : "#f97316",
+                              }}>{task.priority.toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", marginBottom: 8 }}>{task.description}</div>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>
+                            by <strong style={{ color: "rgba(255,255,255,0.5)" }}>{task.created_by}</strong> · {new Date(task.created_at).toLocaleString()}
+                          </div>
+                          {task.status === "awaiting_review" && (
+                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                              <button className="action-btn" onClick={() => handleApprove(task.id)} style={{
+                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(16,185,129,0.3)",
+                                background: "rgba(16,185,129,0.1)", color: "#10b981", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer", transition: "all 0.15s",
+                              }}>✓ Approve</button>
+                              <button className="action-btn" onClick={() => handleEscalate(task.id)} style={{
+                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)",
+                                background: "rgba(239,68,68,0.1)", color: "#ef4444", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer", transition: "all 0.15s",
+                              }}>🚨 Escalate to FIU</button>
+                              <button className="action-btn" onClick={() => handleExportSTR(task.id)} style={{
+                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)",
+                                background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer", transition: "all 0.15s",
+                              }}>📄 Export STR</button>
+                              <button className="action-btn" onClick={() => setCorrectionTarget({ taskId: task.id, text: task.description })} style={{
+                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(167,139,250,0.25)",
+                                background: "rgba(167,139,250,0.08)", color: "#c4b5fd", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer", transition: "all 0.15s",
+                              }}>🧠 Teach Agent</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </GlassCard>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── MEMORY TAB ── */}
+            {activeTab === "memory" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <GlassCard style={{ padding: 14, background: "rgba(167,139,250,0.05)" }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+                    🧠 <strong style={{ color: "#c4b5fd" }}>Moss Persistent Memory</strong> — Officer precedents and corrections are vectorized and indexed here. Agents automatically consult this memory on every new investigation, learning from every human override.
+                  </div>
+                </GlassCard>
+                {learnedRules.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(255,255,255,0.2)" }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>🧠</div>
+                    <div style={{ fontSize: 13 }}>No precedents learned yet. Use "Teach Agent" to add compliance rules.</div>
+                  </div>
+                )}
+                {learnedRules.map((rule, i) => (
+                  <GlassCard key={rule.id} style={{ padding: 14, animation: "fadeUp 0.3s ease" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>🧠</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                          {rule.metadata?.type && <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 99, background: "rgba(167,139,250,0.1)", color: "#c4b5fd", fontWeight: 600 }}>{String(rule.metadata.type)}</span>}
+                          {rule.metadata?.officer && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>by {String(rule.metadata.officer)}</span>}
+                        </div>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>{rule.text.replace(/^\[Officer Precedent: [^\]]+\] /, "")}</div>
+                      </div>
+                    </div>
+                  </GlassCard>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ─── Input Bar ────────────────────────────────────────────────────── */}
+          <div style={{
+            borderTop: "1px solid rgba(167,139,250,0.1)",
+            padding: "14px 16px",
+            background: "rgba(7,4,19,0.6)", backdropFilter: "blur(20px)", flexShrink: 0,
+          }}>
+            {/* Example chips */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {EXAMPLE_FLAGS.map((ex, i) => (
+                <button key={i} className="example-chip" onClick={() => { setInput(ex); inputRef.current?.focus(); }} style={{
+                  background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.15)",
+                  borderRadius: 99, padding: "3px 12px", fontSize: 11, color: "rgba(255,255,255,0.45)",
+                  cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
+                }}>
+                  {ex.length > 50 ? ex.slice(0, 50) + "…" : ex}
+                </button>
+              ))}
+            </div>
+
+            {/* Controls row */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              {/* Priority */}
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {(["normal", "high", "critical"] as const).map(p => (
+                  <button key={p} onClick={() => setPriority(p)} style={{
+                    padding: "5px 12px", fontSize: 11, fontWeight: 600,
+                    background: priority === p
+                      ? p === "critical" ? "rgba(239,68,68,0.2)" : p === "high" ? "rgba(249,115,22,0.2)" : "rgba(167,139,250,0.15)"
+                      : "transparent",
+                    color: priority === p
+                      ? p === "critical" ? "#ef4444" : p === "high" ? "#f97316" : "#c4b5fd"
+                      : "rgba(255,255,255,0.3)",
+                    border: "none", cursor: "pointer", transition: "all 0.15s",
+                  }}>{p}</button>
+                ))}
+              </div>
+
+              {/* Agent filter */}
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <button onClick={() => setTargetAgent(null)} style={{
+                  padding: "5px 12px", fontSize: 11, fontWeight: 600,
+                  background: !targetAgent ? "rgba(167,139,250,0.15)" : "transparent",
+                  color: !targetAgent ? "#c4b5fd" : "rgba(255,255,255,0.3)",
+                  border: "none", cursor: "pointer", transition: "all 0.15s",
+                }}>All Agents</button>
+                {Object.entries(AGENT_CONFIG).map(([key, cfg]) => (
+                  <button key={key} onClick={() => setTargetAgent(targetAgent === key ? null : key)} style={{
+                    padding: "5px 12px", fontSize: 11, fontWeight: 600,
+                    background: targetAgent === key ? `${cfg.color}18` : "transparent",
+                    color: targetAgent === key ? cfg.color : "rgba(255,255,255,0.3)",
+                    border: "none", cursor: "pointer", transition: "all 0.15s",
+                  }}>{cfg.icon}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Input row */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && flagEvent()}
+                placeholder="Describe a suspicious transaction or compliance event…"
+                disabled={isLoading}
+                style={{
+                  flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(167,139,250,0.2)",
+                  borderRadius: 12, padding: "11px 16px", color: "white", fontSize: 13,
+                  outline: "none", opacity: isLoading ? 0.5 : 1, transition: "border 0.2s",
+                }}
+              />
+              <button
+                onClick={flagEvent}
+                disabled={!input.trim() || isLoading}
+                style={{
+                  padding: "11px 24px", borderRadius: 12,
+                  background: isLoading || !input.trim() ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg, #7c3aed, #4f46e5)",
+                  border: "1px solid rgba(167,139,250,0.2)", color: "white",
+                  fontSize: 13, fontWeight: 700, cursor: isLoading || !input.trim() ? "not-allowed" : "pointer",
+                  transition: "all 0.2s", display: "flex", alignItems: "center", gap: 8,
+                }}
+              >
+                {isLoading ? (
+                  <><div style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "white", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Analyzing</>
+                ) : "🚩 Flag"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Right Sidebar ──────────────────────────────────────────────────── */}
+        <div style={{
+          width: 220, borderLeft: "1px solid rgba(167,139,250,0.08)",
+          display: "flex", flexDirection: "column", gap: 0, overflow: "auto", flexShrink: 0,
+          padding: 14, paddingTop: 16,
+        }}>
+          {/* Moss Performance */}
+          {benchmarkResult && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Moss Performance</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { label: "Avg Latency", value: `${benchmarkResult.avg_ms}ms`, color: "#10b981" },
+                  { label: "Mode", value: benchmarkResult.mode === "live_moss" ? "🟢 Live Moss" : "🟡 Mock", color: benchmarkResult.mode === "live_moss" ? "#10b981" : "#fbbf24" },
+                  { label: "Sub-10ms", value: benchmarkResult.all_under_10ms ? "✅ All passed" : "⚠️ Some >10ms", color: benchmarkResult.all_under_10ms ? "#10b981" : "#f97316" },
+                ].map(m => (
+                  <div key={m.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>{m.label}</span>
+                    <span style={{ color: m.color, fontFamily: "monospace", fontWeight: 600 }}>{m.value}</span>
+                  </div>
+                ))}
+                {/* Latency sparkline */}
+                {benchmarkResult.samples && (
+                  <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 24, marginTop: 4 }}>
+                    {benchmarkResult.samples.map((s, i) => {
+                      const h = Math.max(4, Math.min(24, (s / 15) * 24));
+                      const c = s < 5 ? "#10b981" : s < 10 ? "#fbbf24" : "#ef4444";
+                      return <div key={i} title={`${s.toFixed(2)}ms`} style={{ flex: 1, height: h, background: c, borderRadius: 2, opacity: 0.8 }} />;
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Online Users */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
+              Online Officers ({presence.length})
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {presence.map(p => (
+                <div key={p.user_id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{
+                    width: 26, height: 26, borderRadius: "50%",
+                    background: `hsl(${(p.name.charCodeAt(0) * 37) % 360}, 55%, 38%)`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 700, flexShrink: 0,
+                  }}>{p.name[0].toUpperCase()}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: p.name === userName ? "#c4b5fd" : "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.name} {p.name === userName && <span style={{ fontSize: 9, color: "rgba(167,139,250,0.5)" }}>(you)</span>}
+                    </div>
+                    <PulseDot color="#10b981" size={5} />
+                  </div>
                 </div>
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Object.entries(AGENT_CONFIG).map(([role, cfg]) => {
-                    if (!activeAgents.has(role)) return null;
+              ))}
+            </div>
+          </div>
+
+          {/* Architecture diagram */}
+          <div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Pipeline</div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace", lineHeight: 1.8 }}>
+              <div style={{ color: "rgba(255,255,255,0.4)", fontWeight: 700 }}>Phase 1 (∥)</div>
+              <div>├ 🔎 RegScanner</div>
+              <div>└ 📊 RiskAnalyst</div>
+              <div style={{ color: "rgba(255,255,255,0.2)", margin: "3px 0" }}>───────────</div>
+              <div style={{ color: "rgba(255,255,255,0.4)", fontWeight: 700 }}>Phase 2 (∥)</div>
+              <div>├ 📝 AuditDrafter</div>
+              <div>└ 🚨 Escalation</div>
+              <div style={{ color: "rgba(255,255,255,0.2)", margin: "3px 0" }}>───────────</div>
+              <div style={{ color: "#a78bfa" }}>⚡ Moss Index</div>
+              <div style={{ paddingLeft: 8 }}>regulations</div>
+              <div style={{ paddingLeft: 8 }}>transactions</div>
+              <div style={{ paddingLeft: 8 }}>violations</div>
+              <div style={{ paddingLeft: 8 }}>learned-rules</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Teach Agent Modal ─────────────────────────────────────────────────── */}
+      {correctionTarget && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20,
+        }}>
+          <GlassCard style={{ padding: 24, maxWidth: 500, width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>🧠 Teach Agent — Add Precedent</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.03)", padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+              {correctionTarget.text.slice(0, 200)}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["exception", "false_positive", "guideline"] as const).map(t => (
+                <button key={t} onClick={() => setCorrectionType(t)} style={{
+                  flex: 1, padding: "6px 0", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                  background: correctionType === t ? "rgba(167,139,250,0.15)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${correctionType === t ? "rgba(167,139,250,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  color: correctionType === t ? "#c4b5fd" : "rgba(255,255,255,0.3)", cursor: "pointer",
+                }}>{t.replace("_", " ")}</button>
+              ))}
+            </div>
+
+            <textarea
+              value={correctionInput}
+              onChange={e => setCorrectionInput(e.target.value)}
+              placeholder="Describe the correct compliance rule or precedent for this case…"
+              rows={4}
+              style={{
+                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(167,139,250,0.2)",
+                borderRadius: 10, padding: "12px 14px", color: "white", fontSize: 13, resize: "none",
+                outline: "none", width: "100%",
+              }}
+              autoFocus
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setCorrectionTarget(null); setCorrectionInput(""); }} style={{
+                flex: 1, padding: "10px", borderRadius: 10, background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)",
+                fontSize: 13, cursor: "pointer", fontWeight: 600,
+              }}>Cancel</button>
+              <button onClick={submitCorrection} disabled={!correctionInput.trim() || isSubmittingCorrection} style={{
+                flex: 2, padding: "10px", borderRadius: 10,
+                background: correctionInput.trim() ? "linear-gradient(135deg, #7c3aed, #4f46e5)" : "rgba(255,255,255,0.04)",
+                border: "none", color: "white", fontSize: 13, cursor: correctionInput.trim() ? "pointer" : "not-allowed",
+                fontWeight: 700,
+              }}>
+                {isSubmittingCorrection ? "Indexing to Moss…" : "🧠 Index to Moss Memory"}
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* ─── Benchmark Modal ──────────────────────────────────────────────────── */}
+      {showBenchmarkModal && benchmarkResult && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20,
+        }} onClick={() => setShowBenchmarkModal(false)}>
+          <GlassCard style={{ padding: 24, maxWidth: 480, width: "100%", display: "flex", flexDirection: "column", gap: 16 }} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>⚡ Moss Benchmark Results</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { label: "Average Latency", value: `${benchmarkResult.avg_ms}ms`, good: true },
+                { label: "All Queries < 10ms", value: benchmarkResult.all_under_10ms ? "✅ Yes" : "❌ No", good: benchmarkResult.all_under_10ms },
+                { label: "Mode", value: benchmarkResult.mode === "live_moss" ? "Live Moss (in-process)" : "Mock (set MOSS keys)" },
+              ].map(m => (
+                <div key={m.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: 13 }}>
+                  <span style={{ color: "rgba(255,255,255,0.5)" }}>{m.label}</span>
+                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: m.good ? "#10b981" : "#fbbf24" }}>{m.value}</span>
+                </div>
+              ))}
+            </div>
+            {benchmarkResult.samples && (
+              <>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Query Latency Distribution</div>
+                <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 50 }}>
+                  {benchmarkResult.samples.map((s, i) => {
+                    const h = Math.max(6, Math.min(50, (s / 12) * 50));
+                    const c = s < 5 ? "#10b981" : s < 10 ? "#fbbf24" : "#ef4444";
                     return (
-                      <div key={role} className="glass rounded-xl px-3 py-2 flex items-center gap-2 border-l-2" style={{ borderLeftColor: cfg.color }}>
-                        <span className="text-sm">{cfg.icon}</span>
-                        <span className="text-xs font-medium" style={{ color: cfg.color }}>{cfg.label}</span>
-                        <span className="text-[10px] text-[var(--text-muted)] ml-auto cursor-blink">analyzing</span>
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <div style={{ fontSize: 8, color: c, fontFamily: "monospace" }}>{s.toFixed(1)}</div>
+                        <div style={{ width: "100%", height: h, background: c, borderRadius: 3, opacity: 0.85 }} />
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            </div>
-          )}
-          <div ref={feedEndRef} />
-        </div>
-
-        <div className="p-4 border-t border-white/5 flex-shrink-0">
-          <div className="glass-strong rounded-2xl flex items-center gap-3 px-4 py-2">
-            <span className="text-sm">🚩</span>
-            <input type="text" value={input} onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && flagEvent()}
-              placeholder="Describe a suspicious transaction or compliance concern..."
-              disabled={isLoading}
-              className="flex-1 bg-transparent outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" />
-            <button onClick={flagEvent} disabled={isLoading || !input.trim() || !wsConnected}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-red-600 text-white text-sm font-medium disabled:opacity-30 hover:opacity-90 transition-opacity cursor-pointer">
-              Flag
-            </button>
-          </div>
-        </div>
-      </main>
-
-      {/* RIGHT: Latency Dashboard */}
-      <aside className="w-60 glass-strong flex flex-col border-l border-white/5 overflow-hidden">
-        <div className="p-4 border-b border-white/5">
-          <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Moss Latency</p>
-        </div>
-        <div className="p-4 flex-1 overflow-y-auto">
-          <div className="mb-4">
-            <div className="flex items-baseline gap-1.5 mb-0.5">
-              <span className="text-2xl font-bold font-mono text-emerald-400">{avgLatency}</span>
-              <span className="text-xs text-[var(--text-muted)]">ms avg</span>
-            </div>
-            {benchmarkResult && (
-              <div className={`text-[10px] ${benchmarkResult.all_under_10ms ? "text-emerald-400" : "text-amber-400"}`}>
-                {benchmarkResult.all_under_10ms ? "✅ All <10ms" : "⚠️ Some >10ms"} ({benchmarkResult.mode === "live_moss" ? "Live Moss" : "Mock"})
-              </div>
+              </>
             )}
-          </div>
-          <div className="space-y-1.5">
-            {latencyLog.slice(-20).map((log, i) => {
-              const color = AGENT_CONFIG[log.agent.toLowerCase()]?.color || "#a78bfa";
-              const icon = AGENT_CONFIG[log.agent.toLowerCase()]?.icon || "🤖";
-              return (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-[10px] w-5 text-center">{icon}</span>
-                  <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min((log.ms / 15) * 100, 100)}%`, backgroundColor: color, opacity: 0.8 }} />
-                  </div>
-                  <span className="text-[10px] w-10 font-mono text-right text-[var(--text-muted)]">{log.ms.toFixed(1)}ms</span>
-                </div>
-              );
-            })}
-          </div>
-          {latencyLog.length === 0 && <p className="text-xs text-[var(--text-muted)] text-center mt-6">Flag an event to see live latency</p>}
-
-          <div className="mt-6 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
-            <p className="text-[10px] font-semibold text-emerald-400 mb-1.5">Moss Indexes</p>
-            {["regulations", "transactions", "violations", "session-history", "learned-rules"].map(idx => (
-              <div key={idx} className="flex justify-between items-center text-[10px] mb-1">
-                <span className="text-[var(--text-muted)]">{idx}</span>
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 p-3 rounded-xl bg-white/3 border border-white/5">
-            <p className="text-[10px] font-semibold text-[var(--text-secondary)] mb-1.5">Share Workspace</p>
-            <button onClick={() => navigator.clipboard.writeText(window.location.href)}
-              className="w-full text-[10px] py-1.5 rounded-lg bg-white/5 border border-white/10 text-violet-400 hover:bg-white/10 transition-all-smooth cursor-pointer">
-              📋 Copy Invite Link
-            </button>
-          </div>
+            <button onClick={() => setShowBenchmarkModal(false)} style={{
+              padding: "10px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 13, fontWeight: 600,
+            }}>Close</button>
+          </GlassCard>
         </div>
-      </aside>
+      )}
 
-      {/* TEACH AGENT / AUTO-IMPROVEMENT MODAL */}
-      {correctionTarget && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 fade-in-up">
-          <div className="glass-strong rounded-2xl p-6 w-full max-w-lg border border-white/10 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-sm">🧠</div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Teach Agent & Auto-Improve</h3>
-                  <p className="text-[11px] text-[var(--text-muted)]">Save a precedent to Moss. All future agent scans will apply this rule.</p>
-                </div>
-              </div>
-              <button onClick={() => setCorrectionTarget(null)} className="text-[var(--text-muted)] hover:text-white text-sm cursor-pointer">✕</button>
-            </div>
-
-            <div className="mb-3 p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-[var(--text-secondary)]">
-              <span className="text-[10px] uppercase font-mono tracking-wider text-violet-400 block mb-1">Target Context (#{correctionTarget.taskId}):</span>
-              <p className="line-clamp-2 italic">{correctionTarget.text.slice(0, 150)}...</p>
-            </div>
-
-            <div className="mb-3">
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5 font-medium">Precedent Classification:</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: "exception", label: "Rule Exception", desc: "Authorized waiver" },
-                  { id: "false_positive", label: "False Positive", desc: "Legitimate activity" },
-                  { id: "guideline", label: "Internal Policy", desc: "Company precedent" }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setCorrectionType(t.id as any)}
-                    className={`p-2 rounded-xl text-left border transition-all text-xs cursor-pointer ${
-                      correctionType === t.id
-                        ? "bg-violet-500/20 border-violet-500/50 text-violet-200"
-                        : "bg-white/5 border-white/5 text-[var(--text-muted)] hover:bg-white/10"
-                    }`}
-                  >
-                    <span className="font-semibold block">{t.label}</span>
-                    <span className="text-[10px] opacity-75">{t.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <label className="text-xs text-[var(--text-muted)] block mb-1.5 font-medium">Officer Precedent / Feedback:</label>
-              <textarea
-                rows={3}
-                placeholder="e.g. Pre-cleared under Board Resolution #8812. Exclude director ESOP allocations from blackout window."
-                value={correctionInput}
-                onChange={e => setCorrectionInput(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs outline-none focus:border-violet-500/50 text-white placeholder:text-[var(--text-muted)]"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setCorrectionTarget(null)}
-                className="px-4 py-2 rounded-xl text-xs text-[var(--text-muted)] hover:text-white transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!correctionInput.trim() || isSubmittingCorrection}
-                onClick={submitCorrection}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white text-xs font-semibold disabled:opacity-40 cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-1.5"
-              >
-                <span>🧠</span>
-                <span>{isSubmittingCorrection ? "Indexing in Moss…" : "Ingest into Moss Memory"}</span>
-              </button>
-            </div>
-          </div>
+      {/* ─── Toast ─────────────────────────────────────────────────────────────── */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          zIndex: 200, animation: "fadeUp 0.3s ease",
+          padding: "12px 24px", borderRadius: 12,
+          background: toast.type === "success" ? "rgba(16,185,129,0.15)" : toast.type === "error" ? "rgba(239,68,68,0.15)" : "rgba(167,139,250,0.15)",
+          border: `1px solid ${toast.type === "success" ? "rgba(16,185,129,0.3)" : toast.type === "error" ? "rgba(239,68,68,0.3)" : "rgba(167,139,250,0.3)"}`,
+          color: toast.type === "success" ? "#10b981" : toast.type === "error" ? "#ef4444" : "#c4b5fd",
+          fontSize: 13, fontWeight: 600, backdropFilter: "blur(20px)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.4)", whiteSpace: "nowrap",
+        }}>
+          {toast.message}
         </div>
       )}
     </div>

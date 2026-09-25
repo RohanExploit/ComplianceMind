@@ -36,3 +36,9 @@ npm-debug.log*
 .agents/
 AGENTS.md
 CLAUDE.md
+
+# Large media files (>100MB — use Google Drive / LFS instead)
+*.mp4
+*.mov
+*.avi
+*.mkv

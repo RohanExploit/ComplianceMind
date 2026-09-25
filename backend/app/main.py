@@ -2,6 +2,8 @@
 ComplianceMind — FastAPI Application
 AI-Native Compliance Workspace (YC F26 RFS #12)
 Real-time multiplayer: compliance officers + AI agents share one workspace.
+
+TOP 10 — MOSS HACKATHON BUILD (September 2026)
 """
 import json
 import asyncio
@@ -16,11 +18,14 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.moss_service import moss_service
 from app.agents.orchestrator import orchestrator
+from app.api.analytics import router as analytics_router
 
 app = FastAPI(
     title="ComplianceMind API",
-    description="AI-Native Compliance Workspace powered by Moss sub-10ms retrieval",
-    version="1.0.0",
+    description="AI-Native Compliance Workspace powered by Moss sub-10ms retrieval | TOP 10 Moss Hackathon",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.add_middleware(
@@ -30,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register analytics router
+app.include_router(analytics_router)
 
 import traceback as _tb
 from fastapi import Request
@@ -76,11 +84,12 @@ class WorkspaceState:
     def get_tasks(self, workspace_id: str) -> list[dict]:
         return self._tasks.get(workspace_id, [])
 
-    def update_task(self, workspace_id: str, task_id: str, status: str):
+    def update_task(self, workspace_id: str, task_id: str, status: str, **kwargs):
         for task in self._tasks.get(workspace_id, []):
             if task["id"] == task_id:
                 task["status"] = status
                 task["updated_at"] = datetime.now(timezone.utc).isoformat()
+                task.update(kwargs)
 
     async def broadcast(self, workspace_id: str, message: dict, exclude_user: str = ""):
         dead = []
@@ -106,6 +115,7 @@ class FlagRequest(BaseModel):
     task_id: Optional[str] = None
     run_full_pipeline: bool = True
     target_agent: Optional[str] = None  # scanner, analyst, drafter, escalation
+    priority: str = "normal"  # normal | high | critical
 
 
 class DocumentUpload(BaseModel):
@@ -149,6 +159,9 @@ SEED_REGULATIONS = [
     ("Income Tax Act 1961 — Section 269ST: No person shall receive an amount of ₹2 lakh or more in cash for a single transaction or from a single person in a day.", {"type": "regulation", "authority": "IT Dept", "severity": "high"}),
     ("Anti-Bribery Policy 2021: Gifts to government officials exceeding ₹5,000 require prior compliance approval. All hospitality must be recorded in the register.", {"type": "policy", "authority": "Internal", "severity": "medium"}),
     ("Data Masking Standard 2023: All PII and financial PAN data must be masked in non-production environments and encrypted at rest.", {"type": "policy", "authority": "Internal", "severity": "high"}),
+    ("Basel III Framework — Pillar 2: Banks must assess their overall capital adequacy in relation to their risk profile and maintain internal capital adequacy assessment processes (ICAAP).", {"type": "regulation", "authority": "BIS", "severity": "high"}),
+    ("FinCEN AML Guidelines 2023 — Suspicious Activity Reports (SAR): Financial institutions must file SARs within 30 days of detecting suspected criminal activity with no minimum dollar threshold for reporting.", {"type": "regulation", "authority": "FinCEN", "severity": "critical"}),
+    ("PCI-DSS v4.0 Requirement 10: All system activity must be logged and monitored. Logs must be retained for at least 12 months with 3 months immediately available for analysis.", {"type": "regulation", "authority": "PCI SSC", "severity": "high"}),
 ]
 
 SEED_TRANSACTIONS = [
@@ -159,6 +172,8 @@ SEED_TRANSACTIONS = [
     ("Transaction TXN-2024-0910: Cash deposit of ₹2.5 lakh by a single entity on 2024-10-01. Exceeds Section 269ST limit.", {"type": "transaction", "id": "TXN-2024-0910", "amount": "2.5L", "risk": "medium"}),
     ("Audit Log A-102: Unmasked database dump exported to staging server by DBA user 'admin' on 2024-10-02.", {"type": "audit_log", "id": "A-102", "risk": "high"}),
     ("Expense REP-332: ₹15,000 dinner expense for municipal official hosted by Sales VP on 2024-10-03. Missing compliance pre-approval.", {"type": "expense", "id": "REP-332", "amount": "15k", "risk": "medium"}),
+    ("Transaction TXN-2024-1001: Series of 9 cash transactions each just below ₹2 lakh threshold across 3 days — structuring pattern detected.", {"type": "transaction", "id": "TXN-2024-1001", "amount": "9x1.9L", "risk": "critical"}),
+    ("Customer SAR-2024-0055: Shell company registered in British Virgin Islands, zero employees, receiving ₹28Cr in wire transfers over 6 months — no business rationale.", {"type": "kyc_alert", "id": "SAR-2024-0055", "risk": "critical"}),
 ]
 
 
@@ -178,15 +193,24 @@ async def startup():
             settings.transactions_index, text, meta, workspace_id="default"
         )
 
-    print("[READY] ComplianceMind backend ready")
-    print(f"[SEED] Seeded {len(SEED_REGULATIONS)} regulations + {len(SEED_TRANSACTIONS)} transactions")
+    print("[READY] ComplianceMind v2.0 backend ready — TOP 10 Moss Hackathon Build")
+    print(f"[SEED] {len(SEED_REGULATIONS)} regulations + {len(SEED_TRANSACTIONS)} transactions loaded")
 
 
 # ─── REST Endpoints ───────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "ComplianceMind", "timestamp": datetime.now(timezone.utc).isoformat()}
+    stats = await moss_service.get_index_stats()
+    return {
+        "status": "ok",
+        "service": "ComplianceMind",
+        "version": "2.0.0",
+        "build": "TOP10-MOSS-HACKATHON",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "moss_mode": "live" if moss_service._indexes_loaded else "mock",
+        "index_stats": stats,
+    }
 
 
 @app.get("/api/workspace/{workspace_id}")
@@ -233,6 +257,7 @@ async def leaderboard_proof():
         "project": "ComplianceMind — AI-Native Compliance Workspace",
         "hackathon": "YC Fall 2026 x Moss Zero Latency Builder Sprint",
         "track": "Track 2: Multiplayer AI and Collaborative Agents",
+        "selection_status": "TOP 10 — MOSS HACKATHON",
         "moss_retrieval": {
             "avg_ms": bench["avg_ms"],
             "min_ms": bench["min_ms"],
@@ -245,7 +270,7 @@ async def leaderboard_proof():
             "agents_run": len(pipeline_results),
             "architecture": "Phase1(RegScanner ∥ RiskAnalyst) → Phase2(AuditDrafter ∥ Escalation)",
             "total_wall_clock_ms": total_pipeline_ms,
-            "moss_indexes_queried": ["regulations", "transactions", "violations", "session-history"],
+            "moss_indexes_queried": ["regulations", "transactions", "violations", "session-history", "learned-rules"],
             "parallel_queries_per_agent": 3,
         },
         "key_claims": [
@@ -254,6 +279,8 @@ async def leaderboard_proof():
             f"4-agent parallel pipeline wall-clock: {total_pipeline_ms}ms",
             "True asyncio.gather parallelism — agents run concurrently, not sequentially",
             "WebSocket multiplayer — multiple officers share one workspace in real-time",
+            "Human-in-the-loop learning — officers teach agents via Moss persistent memory",
+            "One-click STR export — PMLA-compliant FIU-IND report generation",
         ],
         "agents": [r.agent_name for r in pipeline_results],
     }
@@ -268,8 +295,8 @@ async def flag_event(req: FlagRequest):
     # Log event to session history
     await moss_service.add_document(
         settings.session_history_index,
-        f"[Compliance Flag] {req.description}",
-        metadata={"type": "flag", "task_id": task_id},
+        f"[Compliance Flag | {req.priority.upper()}] {req.description}",
+        metadata={"type": "flag", "task_id": task_id, "priority": req.priority},
         workspace_id=req.workspace_id,
     )
 
@@ -295,6 +322,7 @@ async def flag_event(req: FlagRequest):
     return {
         "task_id": task_id,
         "workspace_id": req.workspace_id,
+        "priority": req.priority,
         "responses": [
             {
                 "agent": r.agent_name,
@@ -320,6 +348,18 @@ async def query_moss(req: QueryRequest):
         "latency_ms": result.latency_ms,
         "index": result.index_name,
     }
+
+
+@app.post("/api/documents")
+async def upload_document(req: DocumentUpload):
+    """Upload a regulation or transaction document to Moss index."""
+    doc_id = await moss_service.add_document(
+        req.index,
+        req.text,
+        metadata=req.metadata or {"type": "uploaded"},
+        workspace_id=req.workspace_id,
+    )
+    return {"doc_id": doc_id, "index": req.index, "workspace_id": req.workspace_id}
 
 
 @app.post("/api/feedback")
@@ -435,6 +475,7 @@ async def workspace_ws(websocket: WebSocket, workspace_id: str):
             if msg_type == "flag":
                 content = msg.get("content", "")
                 target_agent = msg.get("target_agent")
+                priority = msg.get("priority", "normal")
                 task_id = str(uuid.uuid4())[:8]
 
                 # Create task in workspace
@@ -443,6 +484,7 @@ async def workspace_ws(websocket: WebSocket, workspace_id: str):
                     "description": content,
                     "status": "analyzing",
                     "created_by": user_name,
+                    "priority": priority,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
                 workspace_state.add_task(workspace_id, task)
@@ -459,7 +501,7 @@ async def workspace_ws(websocket: WebSocket, workspace_id: str):
                 await moss_service.add_document(
                     settings.session_history_index,
                     f"[{user_name}] {content}",
-                    metadata={"user": user_name, "task_id": task_id},
+                    metadata={"user": user_name, "task_id": task_id, "priority": priority},
                     workspace_id=workspace_id,
                 )
 
@@ -502,6 +544,24 @@ async def workspace_ws(websocket: WebSocket, workspace_id: str):
                     "task_id": task_id,
                     "status": "approved",
                     "approved_by": user_name,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+
+            elif msg_type == "escalate":
+                task_id = msg.get("task_id", "")
+                workspace_state.update_task(workspace_id, task_id, "escalated")
+                # Log escalation to Moss
+                await moss_service.add_document(
+                    settings.violations_index,
+                    f"[ESCALATED by {user_name}] Task {task_id} escalated to FIU-IND",
+                    metadata={"type": "escalation", "task_id": task_id, "officer": user_name},
+                    workspace_id=workspace_id,
+                )
+                await workspace_state.broadcast(workspace_id, {
+                    "type": "task_updated",
+                    "task_id": task_id,
+                    "status": "escalated",
+                    "escalated_by": user_name,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
 
