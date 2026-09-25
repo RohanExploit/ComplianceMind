@@ -101,3 +101,13 @@ Added a dynamic, glowing "Execution Matrix" to the Proof tab that visually demon
 - **Real-Time Parallelism Proof:** The UI now displays a flow diagram (Event Intake -> Phase 1 Parallel -> Phase 2 Parallel -> Consensus).
 - **WebSocket State Binding:** As the backend agents execute, their corresponding nodes in the frontend graph light up and pulse. This proves to the judges that the agents are running concurrently (e.g., RegScanner and RiskAnalyst light up at the exact same time).
 - **Zero-Dependency Visualizer:** Built entirely using native React CSS and DOM elements, avoiding heavy graph libraries for maximum performance and zero install friction.
+
+## 🎙️ Checkpoint 9: "Jarvis-Mode" Voice Interface (Sep 25, 2026)
+
+**Summary:**
+Completely overhauled the Voice AI overlay into a centralized, immersive LiveKit WebRTC interface. 
+
+**Key Achievements:**
+- **Immersive Voice Visualizer:** Upgraded the `VoiceVisualizerOverlay` from a tiny corner widget to a massive, centralized HUD.
+- **Real-Time Audio Reactive Bars:** Integrated `@livekit/components-react` `BarVisualizer` to render gorgeous, glowing audio reactive bars when the user or the AI speaks.
+- **Visual Polish:** Added dynamic box-shadows, sleek typography, and color-coded pulse dots to instantly indicate if the AI is actively listening or generating an auditory response.

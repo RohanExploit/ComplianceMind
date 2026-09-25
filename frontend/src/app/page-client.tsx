@@ -204,29 +204,41 @@ function VoiceVisualizerOverlay({ onClose }: { onClose: () => void }) {
   
   return (
     <div style={{ 
-      position: "fixed", bottom: 24, right: 24, zIndex: 100, 
-      background: "rgba(7,4,19,0.85)", border: "1px solid rgba(167,139,250,0.3)", 
-      borderRadius: 16, padding: "16px 20px", backdropFilter: "blur(20px)",
-      boxShadow: "0 10px 40px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 12,
-      width: 320, animation: "fadeUp 0.3s ease"
+      position: "fixed", inset: 0, zIndex: 100, 
+      background: "rgba(7,4,19,0.75)", backdropFilter: "blur(40px)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      animation: "fadeUp 0.3s ease"
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <PulseDot color={state === "speaking" ? "#a78bfa" : "#10b981"} size={8} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: state === "speaking" ? "#a78bfa" : "#10b981" }}>
-            {state === "speaking" ? "AI is Speaking..." : state === "listening" ? "Listening..." : "Voice Assistant"}
-          </span>
+      <div style={{
+        background: "rgba(22,22,36,0.5)", border: "1px solid rgba(167,139,250,0.2)",
+        borderRadius: 32, padding: "40px", display: "flex", flexDirection: "column", alignItems: "center",
+        gap: 30, width: 480, boxShadow: "0 20px 80px rgba(139,92,246,0.15)"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <PulseDot color={state === "speaking" ? "#a78bfa" : "#10b981"} size={12} />
+            <span style={{ fontSize: 16, fontWeight: 800, color: state === "speaking" ? "#a78bfa" : "#10b981", letterSpacing: 1 }}>
+              {state === "speaking" ? "AI OFFICER IS SPEAKING..." : state === "listening" ? "LISTENING..." : "VOICE ASSISTANT ACTIVE"}
+            </span>
+          </div>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "white", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 14 }}>✕</button>
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 16 }}>✕</button>
-      </div>
-      
-      <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)", borderRadius: 12 }}>
-        <BarVisualizer state={state} barCount={7} trackRef={audioTrack} style={{ width: "100%", height: "40px" }} options={{ minHeight: 4 }} />
-      </div>
+        
+        <div style={{ 
+          height: 120, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", 
+          background: "rgba(0,0,0,0.4)", borderRadius: 24,
+          boxShadow: state === "speaking" ? "inset 0 0 40px rgba(139,92,246,0.1)" : "inset 0 0 20px rgba(16,185,129,0.05)"
+        }}>
+          <BarVisualizer state={state} barCount={13} trackRef={audioTrack} style={{ width: "80%", height: "80px" }} options={{ minHeight: 4 }} />
+        </div>
 
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textAlign: "center" }}>Speak directly to the AI Compliance Officer.</div>
-      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: 12, display: "flex", justifyContent: "center" }}>
-        <VoiceAssistantControlBar />
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", textAlign: "center", lineHeight: 1.5 }}>
+          You are securely connected to the Moss Voice AI via LiveKit WebRTC.<br/>Speak a compliance event to instantly run a full multi-agent risk analysis.
+        </div>
+        
+        <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 16, padding: "16px 24px" }}>
+          <VoiceAssistantControlBar />
+        </div>
       </div>
     </div>
   );
