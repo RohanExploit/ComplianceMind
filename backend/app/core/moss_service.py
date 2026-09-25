@@ -9,6 +9,8 @@ FIXES:
 import asyncio
 import time
 import uuid
+import os
+import json
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -55,6 +57,25 @@ class MossRetrievalService:
         self._indexes_loaded: set[str] = set()
         self._mock_store: dict[str, list[dict]] = {}
         self._latency_samples: list[float] = []
+        self._cache_dir = os.path.join(os.path.dirname(__file__), "../../.moss_cache")
+        self._cache_file = os.path.join(self._cache_dir, "offline_store.json")
+
+    def _save_cache(self):
+        os.makedirs(self._cache_dir, exist_ok=True)
+        try:
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                json.dump(self._mock_store, f)
+        except Exception as e:
+            print(f"[Moss Offline] Error saving cache: {e}")
+
+    def _load_cache(self):
+        if os.path.exists(self._cache_file):
+            try:
+                with open(self._cache_file, "r", encoding="utf-8") as f:
+                    self._mock_store = json.load(f)
+                print(f"[Moss Offline] Loaded cache from disk: {sum(len(v) for v in self._mock_store.values())} documents")
+            except Exception as e:
+                print(f"[Moss Offline] Error loading cache: {e}")
 
     @property
     def all_indexes(self):
@@ -74,8 +95,11 @@ class MossRetrievalService:
         if self._initialized:
             return
 
+        self._load_cache()
+
         for idx in self.all_indexes:
-            self._mock_store[idx] = []
+            if idx not in self._mock_store:
+                self._mock_store[idx] = []
 
         if MOSS_AVAILABLE and settings.moss_project_id and settings.moss_project_key:
             try:
@@ -122,11 +146,13 @@ class MossRetrievalService:
                     [DocumentInfo(id=doc_id, text=text)]
                 )
                 self._mock_store.setdefault(index_name, []).append(doc_obj)
+                self._save_cache()
                 return doc_id
             except Exception as e:
                 print(f"Moss add_docs error: {e}")
 
         self._mock_store.setdefault(index_name, []).append(doc_obj)
+        self._save_cache()
         return doc_id
 
     async def query(
