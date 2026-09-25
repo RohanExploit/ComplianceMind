@@ -141,15 +141,18 @@ function PulseDot({ color = "#a78bfa", size = 8 }: { color?: string; size?: numb
 }
 
 // ─── Glass Card ───────────────────────────────────────────────────────────────
-function GlassCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function GlassCard({ children, style, onClick }: { children: React.ReactNode; style?: React.CSSProperties; onClick?: (e: React.MouseEvent) => void }) {
   return (
-    <div style={{
-      background: "rgba(15,10,35,0.55)",
-      border: "1px solid rgba(167,139,250,0.12)",
-      borderRadius: 16,
-      backdropFilter: "blur(20px)",
-      ...style,
-    }}>
+    <div 
+      onClick={onClick}
+      style={{
+        background: "rgba(15,10,35,0.55)",
+        border: "1px solid rgba(167,139,250,0.12)",
+        borderRadius: 16,
+        backdropFilter: "blur(20px)",
+        ...(onClick ? { cursor: "pointer" } : {}),
+        ...style,
+      }}>
       {children}
     </div>
   );
@@ -210,7 +213,7 @@ export default function WorkspacePage() {
   const [latencyLog, setLatencyLog] = useState<Array<{ agent: string; ms: number }>>([]);
   const [activeAgents, setActiveAgents] = useState<Set<string>>(new Set());
   const [targetAgent, setTargetAgent] = useState<string | null>(null);
-  const [benchmarkResult, setBenchmarkResult] = useState<null | { avg_ms: number; all_under_10ms: boolean; mode: string; mode_label?: string; samples?: number[]; parallel_wall_clock_ms?: number }>(null);
+  const [benchmarkResult, setBenchmarkResult] = useState<null | { avg_ms: number; min_ms?: number; max_ms?: number; all_under_10ms: boolean; mode: string; mode_label?: string; samples?: number[]; parallel_wall_clock_ms?: number }>(null);
   const [learnedRules, setLearnedRules] = useState<Array<{ id: string; text: string; metadata?: Record<string, unknown> }>>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [correctionTarget, setCorrectionTarget] = useState<{ taskId: string; text: string } | null>(null);
@@ -1045,8 +1048,8 @@ export default function WorkspacePage() {
                       <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>🧠</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                          {rule.metadata?.type && <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 99, background: "rgba(167,139,250,0.1)", color: "#c4b5fd", fontWeight: 600 }}>{String(rule.metadata.type)}</span>}
-                          {rule.metadata?.officer && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>by {String(rule.metadata.officer)}</span>}
+                          {rule.metadata?.type ? <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 99, background: "rgba(167,139,250,0.1)", color: "#c4b5fd", fontWeight: 600 }}>{String(rule.metadata.type)}</span> : null}
+                          {rule.metadata?.officer ? <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>by {String(rule.metadata.officer)}</span> : null}
                         </div>
                         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>{rule.text.replace(/^\[Officer Precedent: [^\]]+\] /, "")}</div>
                       </div>
@@ -1068,7 +1071,7 @@ export default function WorkspacePage() {
                         {[
                           { label: "Avg", value: `${benchmarkResult.avg_ms}ms`, color: "#10b981" },
                           { label: "Min", value: `${benchmarkResult.min_ms ?? "?"}ms`, color: "#10b981" },
-                          { label: "Max", value: `${benchmarkResult.max_ms ?? "?"}ms`, color: benchmarkResult.max_ms > 10 ? "#f97316" : "#10b981" },
+                          { label: "Max", value: `${benchmarkResult.max_ms ?? "?"}ms`, color: (benchmarkResult.max_ms ?? 0) > 10 ? "#f97316" : "#10b981" },
                           { label: "Sub-10ms", value: benchmarkResult.all_under_10ms ? "100%" : "partial", color: benchmarkResult.all_under_10ms ? "#10b981" : "#ef4444" },
                         ].map(m => (
                           <div key={m.label} style={{ textAlign: "center" }}>
