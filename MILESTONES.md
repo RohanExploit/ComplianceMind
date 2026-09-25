@@ -17,3 +17,18 @@ Transformed the architecture from a basic sequential proof-of-concept into a rob
 **Next Potential Leaps:**
 - Exploring **Voice AI (LiveKit)** integration as an interactive Compliance Officer Voice Assistant to create an ultimate "wow" factor for the Top 10 presentation.
 - Continued refinement of UI micro-animations and aesthetic polish.
+
+## 🎙️ Checkpoint 2: Voice AI Officer Assistant (Sep 25, 2026)
+
+**Summary:** 
+Integrated LiveKit's real-time WebRTC infrastructure to create an AI Voice Assistant that acts as a hands-free Compliance Officer.
+
+**Key Achievements:**
+- **Zero-Latency Voice Pipeline:** Utilized LiveKit's Agent framework with STT, LLM (gemini-3.6-flash), and TTS.
+- **Autonomous Tool Triggering:** Bound the Voice Assistant to the `analyze_risk` tool, allowing it to directly trigger the parallel `ComplianceOrchestrator` when a user reports a suspicious event by voice.
+- **Seamless UI Integration:** Built a persistent bottom-right floating voice overlay in the UI and a "Talk to AI" toggle in the top bar.
+- **Secure Authentication:** Added an `/api/livekit-token` endpoint for secure client-side JWT provisioning.
+
+**Next Potential Leaps:**
+- Build out dynamic visualizers (e.g. `BarVisualizer`) for the voice assistant.
+- Extend the voice agent's toolset to allow it to "fetch latest transactions" and read them aloud.
