@@ -3,8 +3,8 @@ import os
 import logging
 from dotenv import load_dotenv
 
-from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, cli, llm
-from livekit.agents.pipeline import VoicePipelineAgent
+from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, llm
+from livekit.agents.voice import Agent
 from livekit.plugins import openai, silero
 
 load_dotenv()
@@ -15,10 +15,10 @@ llm_model = os.getenv("LLM_MODEL", "gemini-3.6-flash")
 llm_base_url = os.getenv("LLM_BASE_URL")
 llm_api_key = os.getenv("LLM_API_KEY")
 
-class ComplianceTools(llm.FunctionContext):
+class ComplianceTools(llm.ToolContext):
     """Tools for the ComplianceMind Voice Assistant"""
     
-    @llm.ai_callable(description="Run compliance analysis on a suspicious transaction or user account.")
+    @llm.function_tool(description="Run compliance analysis on a suspicious transaction or user account.")
     async def analyze_risk(self, description: str):
         """Run the Moss-powered compliance analysis pipeline on a specific case."""
         logger.info(f"Voice agent triggering analysis for: {description}")
@@ -55,29 +55,23 @@ async def entrypoint(ctx: JobContext):
         base_url=llm_base_url
     )
 
-    # Note: Using OpenAI plugins for STT and TTS by default.
-    # If the hackathon proxy doesn't support Whisper STT/TTS, we might need real OpenAI keys just for audio,
-    # or switch to Deepgram/Cartesia. For now, we will try the proxy or fallback to standard OpenAI.
     stt_instance = openai.STT(model="whisper-1", base_url=llm_base_url, api_key=llm_api_key)
     tts_instance = openai.TTS(model="tts-1", voice="nova", base_url=llm_base_url, api_key=llm_api_key)
 
-    # Configure the Voice Pipeline Agent
-    agent = VoicePipelineAgent(
+    # Configure the Voice Agent
+    agent = Agent(
         vad=silero.VAD.load(),
         stt=stt_instance,
         llm=llm_instance,
         tts=tts_instance,
-        chat_ctx=llm.ChatContext().append(
-            role="system",
-            text=(
-                "You are the ComplianceMind Voice Assistant, an AI compliance officer. "
-                "Your job is to interact with human compliance officers, listen to their concerns "
-                "about specific transactions or user behaviors, and run deep compliance analysis "
-                "using your available tools. Speak concisely and professionally. "
-                "If the user reports a suspicious transaction, use the 'analyze_risk' tool immediately."
-            ),
+        instructions=(
+            "You are the ComplianceMind Voice Assistant, an AI compliance officer. "
+            "Your job is to interact with human compliance officers, listen to their concerns "
+            "about specific transactions or user behaviors, and run deep compliance analysis "
+            "using your available tools. Speak concisely and professionally. "
+            "If the user reports a suspicious transaction, use the 'analyze_risk' tool immediately."
         ),
-        fnc_ctx=ComplianceTools(),
+        tools=[ComplianceTools()],
     )
 
     agent.start(ctx.room)
