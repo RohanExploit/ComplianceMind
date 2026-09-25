@@ -58,3 +58,17 @@ Transformed the basic task list into a full-fledged Kanban-style Agentic Case Ma
 
 **Next Potential Leaps:**
 - Offline-First Moss SDK Integration (Air-gapped security)
+
+## 🔒 Checkpoint 5: Moss Offline-First SDK Mode (Sep 25, 2026)
+
+**Summary:** 
+Implemented a persistent local disk cache for the Moss Retrieval Service, enabling true air-gapped security and zero-latency offline mode.
+
+**Key Achievements:**
+- **Local Disk Persistence:** Engineered a `.moss_cache/offline_store.json` system that transparently caches regulatory data and memory on the local filesystem.
+- **Auto-Sync:** The system intercepts all `add_docs` calls when offline (or acting as a fallback) and persists them securely to disk, preventing data loss across server restarts.
+- **Seamless Loading:** When initialized, the agent automatically rehydrates its memory from disk if live Moss is unreachable.
+
+**Next Potential Leaps:**
+- Agentic PDF STR (Suspicious Transaction Report) Generation
+- Live WebSocket Metric Streams
