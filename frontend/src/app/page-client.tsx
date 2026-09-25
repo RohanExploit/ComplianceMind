@@ -256,6 +256,7 @@ export default function WorkspacePage() {
   const [correctionInput, setCorrectionInput] = useState("");
   const [correctionType, setCorrectionType] = useState<"exception" | "false_positive" | "guideline">("exception");
   const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
+  const [telemetry, setTelemetry] = useState<{ cpu: number; mem: number; latency: number; active: number } | null>(null);
   const [activeTab, setActiveTab] = useState<"feed" | "tasks" | "memory" | "proof" | "analytics">("analytics");
   const [riskSummary, setRiskSummary] = useState<{ risk_distribution?: Record<string, number>; jurisdiction_exposure?: Record<string, number> } | null>(null);
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
@@ -366,6 +367,9 @@ export default function WorkspacePage() {
           showToast("🧠 Precedent indexed in Moss vector memory!", "success");
           break;
         case "error": showToast(data.message || "Action error.", "error"); setIsLoading(false); setActiveAgents(new Set()); break;
+        case "telemetry":
+          setTelemetry({ cpu: data.cpu_usage, mem: data.memory_usage, latency: data.moss_latency_ms, active: data.active_cases });
+          break;
         case "chat":
           setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "user", content: data.content, user: data.user, timestamp: data.timestamp }]);
           break;
@@ -427,11 +431,11 @@ export default function WorkspacePage() {
   const handleExportSTR = async (taskId: string) => {
     try {
       const r = await fetch(`${API_BASE}/api/analytics/str-export/${taskId}?workspace_id=${workspaceId}`);
-      const data = await r.json();
-      const blob = new Blob([data.content], { type: "text/markdown" });
+      if (!r.ok) throw new Error("Failed to export");
+      const blob = await r.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = `${data.report_id}.md`; a.click();
-      showToast(`📄 STR exported: ${data.report_id}`, "success");
+      const a = document.createElement("a"); a.href = url; a.download = `STR-${taskId.toUpperCase()}.pdf`; a.click();
+      showToast(`📄 STR exported as PDF`, "success");
     } catch {
       showToast("STR export failed", "error");
     }
@@ -673,6 +677,14 @@ export default function WorkspacePage() {
             }}>
               <PulseDot color="#ef4444" size={6} />
               {criticalTasks} pending
+            </div>
+          )}
+
+          {/* System Telemetry */}
+          {telemetry && (
+            <div style={{ display: "flex", gap: 8, background: "rgba(0,0,0,0.3)", borderRadius: 99, padding: "3px 12px", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>CPU: <strong style={{ color: "#c4b5fd" }}>{telemetry.cpu}%</strong></span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>RAM: <strong style={{ color: "#c4b5fd" }}>{telemetry.mem}%</strong></span>
             </div>
           )}
 

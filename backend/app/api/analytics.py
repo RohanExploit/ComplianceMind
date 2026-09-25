@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter
+from fastapi.responses import Response
+from fpdf import FPDF
 
 from app.core.moss_service import moss_service
 from app.core.config import settings
@@ -78,47 +80,85 @@ async def export_str(task_id: str, workspace_id: str = "default"):
 
     report_id = f"STR-{datetime.now().strftime('%Y%m%d')}-{task_id.upper()}"
 
-    str_document = f"""# SUSPICIOUS TRANSACTION REPORT (STR)
-**Report ID:** {report_id}
-**Filing Entity:** ComplianceMind Automated Compliance System
-**Filing Date:** {datetime.now(timezone.utc).strftime('%d %B %Y, %H:%M UTC')}
-**Statutory Basis:** PMLA 2002 — Section 12 (7-day STR Filing Obligation)
-**Submitted To:** Financial Intelligence Unit — India (FIU-IND)
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=16, style="B")
+    pdf.cell(200, 10, "SUSPICIOUS TRANSACTION REPORT (STR)", ln=True, align="C")
+    pdf.ln(5)
 
----
+    pdf.set_font("Helvetica", size=10, style="B")
+    pdf.cell(50, 8, "Report ID:", border=0)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(150, 8, report_id, ln=True)
 
-## Section A: Transaction Details
-- **Reference Task ID:** {task_id}
-- **Investigation Initiated:** {datetime.now(timezone.utc).isoformat()}
-- **Workspace:** {workspace_id}
+    pdf.set_font("Helvetica", size=10, style="B")
+    pdf.cell(50, 8, "Filing Entity:", border=0)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(150, 8, "ComplianceMind Automated Compliance System", ln=True)
 
-## Section B: Agent Analysis Summary
-{chr(10).join([f'- {r.text[:200]}' for r in findings_res.results[:3]])}
+    pdf.set_font("Helvetica", size=10, style="B")
+    pdf.cell(50, 8, "Filing Date:", border=0)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(150, 8, datetime.now(timezone.utc).strftime('%d %B %Y, %H:%M UTC'), ln=True)
 
-## Section C: Risk Assessment
-- **Automated Risk Scoring:** ComplianceMind Multi-Agent Pipeline (4 agents, parallel execution)
-- **Moss Retrieval Latency:** {findings_res.latency_ms}ms (sub-10ms target achieved)
-- **Regulatory Frameworks Applied:** SEBI IT Reg 2015, RBI KYC Master Direction, PMLA 2002, FEMA 2000
+    pdf.set_font("Helvetica", size=10, style="B")
+    pdf.cell(50, 8, "Statutory Basis:", border=0)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(150, 8, "PMLA 2002 - Section 12 (7-day STR Filing Obligation)", ln=True)
 
-## Section D: Recommended Action
-- Immediate account freeze pending verification
-- Escalate to FIU-IND within statutory 7-day window
-- Preserve all transaction logs and communication records
+    pdf.set_font("Helvetica", size=10, style="B")
+    pdf.cell(50, 8, "Submitted To:", border=0)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(150, 8, "Financial Intelligence Unit - India (FIU-IND)", ln=True)
 
----
-*Generated automatically by ComplianceMind AI Compliance Workspace*
-*Powered by Moss Sub-10ms Semantic Retrieval Engine*
-"""
+    pdf.line(10, pdf.get_y()+5, 200, pdf.get_y()+5)
+    pdf.ln(10)
 
-    return {
-        "report_id": report_id,
-        "task_id": task_id,
-        "workspace_id": workspace_id,
-        "format": "FIU-IND STR",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "content": str_document,
-        "retrieval_latency_ms": findings_res.latency_ms,
-    }
+    pdf.set_font("Helvetica", size=12, style="B")
+    pdf.cell(200, 8, "Section A: Transaction Details", ln=True)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(200, 6, f"- Reference Task ID: {task_id}", ln=True)
+    pdf.cell(200, 6, f"- Investigation Initiated: {datetime.now(timezone.utc).isoformat()}", ln=True)
+    pdf.cell(200, 6, f"- Workspace: {workspace_id}", ln=True)
+    pdf.ln(5)
+
+    pdf.set_font("Helvetica", size=12, style="B")
+    pdf.cell(200, 8, "Section B: Agent Analysis Summary", ln=True)
+    pdf.set_font("Helvetica", size=10)
+    for r in findings_res.results[:3]:
+        # Encode to latin-1 or replace chars that fpdf helvetica doesn't support
+        clean_text = r.text[:200].encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 6, f"- {clean_text}")
+    pdf.ln(5)
+
+    pdf.set_font("Helvetica", size=12, style="B")
+    pdf.cell(200, 8, "Section C: Risk Assessment", ln=True)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(200, 6, "- Automated Risk Scoring: ComplianceMind Multi-Agent Pipeline", ln=True)
+    pdf.cell(200, 6, f"- Moss Retrieval Latency: {findings_res.latency_ms}ms (sub-10ms target)", ln=True)
+    pdf.cell(200, 6, "- Regulatory Frameworks Applied: SEBI IT Reg 2015, RBI KYC, PMLA 2002", ln=True)
+    pdf.ln(5)
+
+    pdf.set_font("Helvetica", size=12, style="B")
+    pdf.cell(200, 8, "Section D: Recommended Action", ln=True)
+    pdf.set_font("Helvetica", size=10)
+    pdf.cell(200, 6, "- Immediate account freeze pending verification", ln=True)
+    pdf.cell(200, 6, "- Escalate to FIU-IND within statutory 7-day window", ln=True)
+    pdf.cell(200, 6, "- Preserve all transaction logs and communication records", ln=True)
+
+    pdf.line(10, pdf.get_y()+5, 200, pdf.get_y()+5)
+    pdf.ln(10)
+    pdf.set_font("Helvetica", size=8, style="I")
+    pdf.cell(200, 4, "Generated automatically by ComplianceMind AI Compliance Workspace", ln=True, align="C")
+    pdf.cell(200, 4, "Powered by Moss Sub-10ms Semantic Retrieval Engine", ln=True, align="C")
+
+    pdf_bytes = pdf.output()
+
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{report_id}.pdf"'}
+    )
 
 
 @router.get("/leaderboard")

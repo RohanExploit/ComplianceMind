@@ -9,6 +9,7 @@ TOP 10 — MOSS HACKATHON BUILD (September 2026)
 import json
 import asyncio
 import uuid
+import psutil
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -196,6 +197,33 @@ async def startup():
 
     print("[READY] ComplianceMind v2.0 backend ready — TOP 10 Moss Hackathon Build")
     print(f"[SEED] {len(SEED_REGULATIONS)} regulations + {len(SEED_TRANSACTIONS)} transactions loaded")
+
+    # Start telemetry broadcast loop
+    asyncio.create_task(telemetry_loop())
+
+async def telemetry_loop():
+    while True:
+        await asyncio.sleep(2)
+        try:
+            for workspace_id in list(workspace_state._presence.keys()):
+                if workspace_state.get_presence(workspace_id):
+                    cpu = psutil.cpu_percent()
+                    mem = psutil.virtual_memory().percent
+                    # Get average latency from moss
+                    moss_samples = moss_service._latency_samples[-20:]
+                    avg_latency = round(sum(moss_samples) / len(moss_samples), 2) if moss_samples else 0
+                    
+                    metrics = {
+                        "type": "telemetry",
+                        "cpu_usage": cpu,
+                        "memory_usage": mem,
+                        "moss_latency_ms": avg_latency,
+                        "active_cases": len(workspace_state.get_tasks(workspace_id)),
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                    await workspace_state.broadcast(workspace_id, metrics)
+        except Exception as e:
+            print(f"[Telemetry Error] {e}")
 
 
 # ─── REST Endpoints ───────────────────────────────────────────────────────────

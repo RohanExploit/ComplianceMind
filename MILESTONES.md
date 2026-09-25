@@ -72,3 +72,22 @@ Implemented a persistent local disk cache for the Moss Retrieval Service, enabli
 **Next Potential Leaps:**
 - Agentic PDF STR (Suspicious Transaction Report) Generation
 - Live WebSocket Metric Streams
+
+## 📄 Checkpoint 6: Agentic PDF STR Generation (Sep 25, 2026)
+
+**Summary:** 
+Upgraded the `Export STR` feature from a raw Markdown download to a fully professional, stylised PDF generator using `fpdf2`. 
+
+**Key Achievements:**
+- **Regulatory PDF Engine:** Implemented a backend endpoint that streams generated PDFs directly back to the client.
+- **FIU-IND Format:** Formatted the report into Sections A-D matching official Financial Intelligence Unit templates.
+- **Frontend Integration:** Updated `page-client.tsx` to handle direct Blob downloads so officers can instantly export court-ready PDF documents from the Kanban board.
+
+## 📈 Checkpoint 7: Live WebSocket Telemetry Streams (Sep 25, 2026)
+
+**Summary:**
+Added a real-time system metrics stream so officers can monitor exactly how much load the Agent Pipeline is placing on the server and the Moss Engine.
+
+**Key Achievements:**
+- **Backend Telemetry Loop:** Created an `asyncio` background task that pulls `psutil` metrics and Moss retrieval latency averages, broadcasting them over the shared WebSocket every 2 seconds.
+- **Dynamic Header UI:** Added sleek CPU and RAM metric badges to the main navigation header. Officers now have absolute observability of the AI pipeline's performance directly inside the dashboard.
