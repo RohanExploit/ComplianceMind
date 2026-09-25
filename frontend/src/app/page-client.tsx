@@ -1234,6 +1234,72 @@ export default function WorkspacePage() {
                   ) : <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Loading benchmark…</div>}
                 </GlassCard>
 
+                {/* Multi-Agent Architecture Proof */}
+                <GlassCard style={{ padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 16 }}>🕸️ Live Agent Execution Matrix</div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "10px 0" }}>
+                    
+                    {/* Input */}
+                    <div style={{ background: "rgba(255,255,255,0.05)", padding: "6px 16px", borderRadius: 99, fontSize: 10, border: "1px dashed rgba(255,255,255,0.2)" }}>
+                      Event Intake (WebSocket)
+                    </div>
+                    
+                    <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.2)" }} />
+
+                    {/* Phase 1 */}
+                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 1, textTransform: "uppercase" }}>Phase 1: Parallel Analysis</div>
+                    <div style={{ display: "flex", gap: 30 }}>
+                      {["scanner", "analyst"].map(agent => (
+                        <div key={agent} style={{
+                          background: activeAgents.has(agent) ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${activeAgents.has(agent) ? "#10b981" : "rgba(255,255,255,0.1)"}`,
+                          padding: "10px 20px", borderRadius: 8, textAlign: "center", minWidth: 140,
+                          transition: "all 0.3s",
+                          boxShadow: activeAgents.has(agent) ? "0 0 15px rgba(16,185,129,0.3)" : "none",
+                        }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: activeAgents.has(agent) ? "#10b981" : "#a78bfa" }}>
+                            {agent === "scanner" ? "RegScanner" : "RiskAnalyst"}
+                          </div>
+                          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                            {activeAgents.has(agent) ? "⚡ Querying Moss..." : "Idle"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.2)" }} />
+
+                    {/* Phase 2 */}
+                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 1, textTransform: "uppercase" }}>Phase 2: Parallel Resolution</div>
+                    <div style={{ display: "flex", gap: 30 }}>
+                      {["drafter", "escalation"].map(agent => (
+                        <div key={agent} style={{
+                          background: activeAgents.has(agent) ? "rgba(139,92,246,0.15)" : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${activeAgents.has(agent) ? "#8b5cf6" : "rgba(255,255,255,0.1)"}`,
+                          padding: "10px 20px", borderRadius: 8, textAlign: "center", minWidth: 140,
+                          transition: "all 0.3s",
+                          boxShadow: activeAgents.has(agent) ? "0 0 15px rgba(139,92,246,0.3)" : "none",
+                        }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: activeAgents.has(agent) ? "#c4b5fd" : "#a78bfa" }}>
+                            {agent === "drafter" ? "AuditDrafter" : "ActionEngine"}
+                          </div>
+                          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                            {activeAgents.has(agent) ? "🧠 Synthesizing..." : "Idle"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.2)" }} />
+
+                    {/* Output */}
+                    <div style={{ background: "rgba(16,185,129,0.1)", padding: "6px 16px", borderRadius: 99, fontSize: 10, border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", fontWeight: 700 }}>
+                      Final Consensus Verdict
+                    </div>
+
+                  </div>
+                </GlassCard>
+
                 {/* Consensus History */}
                 <GlassCard style={{ padding: 16 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>🤝 Consensus Verdicts This Session</div>

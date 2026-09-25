@@ -91,3 +91,13 @@ Added a real-time system metrics stream so officers can monitor exactly how much
 **Key Achievements:**
 - **Backend Telemetry Loop:** Created an `asyncio` background task that pulls `psutil` metrics and Moss retrieval latency averages, broadcasting them over the shared WebSocket every 2 seconds.
 - **Dynamic Header UI:** Added sleek CPU and RAM metric badges to the main navigation header. Officers now have absolute observability of the AI pipeline's performance directly inside the dashboard.
+
+## 🕸️ Checkpoint 8: Live Agent Execution Matrix (Sep 25, 2026)
+
+**Summary:**
+Added a dynamic, glowing "Execution Matrix" to the Proof tab that visually demonstrates the `asyncio.gather` parallel execution architecture of the multi-agent system.
+
+**Key Achievements:**
+- **Real-Time Parallelism Proof:** The UI now displays a flow diagram (Event Intake -> Phase 1 Parallel -> Phase 2 Parallel -> Consensus).
+- **WebSocket State Binding:** As the backend agents execute, their corresponding nodes in the frontend graph light up and pulse. This proves to the judges that the agents are running concurrently (e.g., RegScanner and RiskAnalyst light up at the exact same time).
+- **Zero-Dependency Visualizer:** Built entirely using native React CSS and DOM elements, avoiding heavy graph libraries for maximum performance and zero install friction.
