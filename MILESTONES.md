@@ -30,5 +30,19 @@ Integrated LiveKit's real-time WebRTC infrastructure to create an AI Voice Assis
 - **Secure Authentication:** Added an `/api/livekit-token` endpoint for secure client-side JWT provisioning.
 
 **Next Potential Leaps:**
-- Build out dynamic visualizers (e.g. `BarVisualizer`) for the voice assistant.
-- Extend the voice agent's toolset to allow it to "fetch latest transactions" and read them aloud.
+- Implement Moss Offline-First Mode using the Moss SDK to cache the compliance index locally for air-gapped security.
+- Build Agentic Case Management (Kanban drag-and-drop board).
+
+## 📊 Checkpoint 3: Live Animated Analytics Dashboard (Sep 25, 2026)
+
+**Summary:** 
+Transformed the frontend into a visually stunning, data-rich command center by integrating a comprehensive Recharts analytics dashboard.
+
+**Key Achievements:**
+- **Recharts Integration:** Built multiple animated data visualizations including a PieChart for Jurisdiction Exposure, an AreaChart for the Risk Timeline, and a BarChart for Top Alert Types.
+- **Lucide Icons & Aesthetics:** Enhanced UI components with Lucide icons for a premium feel.
+- **Vercel-Ready Build:** Ensured strict TypeScript compliance, preventing any build regressions.
+
+**Next Potential Leaps:**
+- Agentic Case Management System
+- Offline-First Moss SDK Integration

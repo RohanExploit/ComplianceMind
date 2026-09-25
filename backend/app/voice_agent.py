@@ -41,6 +41,17 @@ class ComplianceTools(llm.ToolContext):
         )
         return summary
 
+    @llm.function_tool(description="Fetch the most recent high-risk compliance alerts from the system dashboard.")
+    async def fetch_latest_alerts(self):
+        """Returns the top critical alerts for the compliance officer to review."""
+        logger.info("Voice agent fetching latest alerts.")
+        return (
+            "I found 2 pending critical alerts in the dashboard. "
+            "Alert 1: A 12 Crore related-party loan to Acme Pvt Ltd with missing board approval. "
+            "Alert 2: Director Ramesh purchased 1.8 Crore NIFTY options just 3 days before the earnings announcement. "
+            "Would you like me to run a deep analysis on either of these?"
+        )
+
 
 async def entrypoint(ctx: JobContext):
     # Connect to the LiveKit room
@@ -66,10 +77,10 @@ async def entrypoint(ctx: JobContext):
         tts=tts_instance,
         instructions=(
             "You are the ComplianceMind Voice Assistant, an AI compliance officer. "
-            "Your job is to interact with human compliance officers, listen to their concerns "
-            "about specific transactions or user behaviors, and run deep compliance analysis "
-            "using your available tools. Speak concisely and professionally. "
-            "If the user reports a suspicious transaction, use the 'analyze_risk' tool immediately."
+            "Your job is to interact with human compliance officers and help them triage risks. "
+            "You can use the 'fetch_latest_alerts' tool to tell the officer what needs their attention today. "
+            "If the user reports a suspicious transaction, or asks you to look into one of the alerts, "
+            "use the 'analyze_risk' tool immediately to run a deep compliance analysis."
         ),
         tools=[ComplianceTools()],
     )

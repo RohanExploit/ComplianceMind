@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { LiveKitRoom, RoomAudioRenderer, VoiceAssistantControlBar } from "@livekit/components-react";
+import { LiveKitRoom, RoomAudioRenderer, VoiceAssistantControlBar, useVoiceAssistant, BarVisualizer } from "@livekit/components-react";
+import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { Activity, ShieldAlert, TrendingUp, Globe, LayoutDashboard } from "lucide-react";
 import "@livekit/components-styles";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -196,6 +198,40 @@ function RiskGauge({ score, label }: { score: number; label: string }) {
   );
 }
 
+// ─── Voice Visualizer Overlay ──────────────────────────────────────────────────
+function VoiceVisualizerOverlay({ onClose }: { onClose: () => void }) {
+  const { state, audioTrack } = useVoiceAssistant();
+  
+  return (
+    <div style={{ 
+      position: "fixed", bottom: 24, right: 24, zIndex: 100, 
+      background: "rgba(7,4,19,0.85)", border: "1px solid rgba(167,139,250,0.3)", 
+      borderRadius: 16, padding: "16px 20px", backdropFilter: "blur(20px)",
+      boxShadow: "0 10px 40px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 12,
+      width: 320, animation: "fadeUp 0.3s ease"
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <PulseDot color={state === "speaking" ? "#a78bfa" : "#10b981"} size={8} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: state === "speaking" ? "#a78bfa" : "#10b981" }}>
+            {state === "speaking" ? "AI is Speaking..." : state === "listening" ? "Listening..." : "Voice Assistant"}
+          </span>
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 16 }}>✕</button>
+      </div>
+      
+      <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)", borderRadius: 12 }}>
+        <BarVisualizer state={state} barCount={7} trackRef={audioTrack} style={{ width: "100%", height: "40px" }} options={{ minHeight: 4 }} />
+      </div>
+
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textAlign: "center" }}>Speak directly to the AI Compliance Officer.</div>
+      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: 12, display: "flex", justifyContent: "center" }}>
+        <VoiceAssistantControlBar />
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function WorkspacePage() {
@@ -220,7 +256,7 @@ export default function WorkspacePage() {
   const [correctionInput, setCorrectionInput] = useState("");
   const [correctionType, setCorrectionType] = useState<"exception" | "false_positive" | "guideline">("exception");
   const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
-  const [activeTab, setActiveTab] = useState<"feed" | "tasks" | "memory" | "proof">("feed");
+  const [activeTab, setActiveTab] = useState<"feed" | "tasks" | "memory" | "proof" | "analytics">("analytics");
   const [riskSummary, setRiskSummary] = useState<{ risk_distribution?: Record<string, number>; jurisdiction_exposure?: Record<string, number> } | null>(null);
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
   const [priority, setPriority] = useState<"normal" | "high" | "critical">("normal");
@@ -767,22 +803,96 @@ export default function WorkspacePage() {
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 2, padding: "10px 16px 0", borderBottom: "1px solid rgba(167,139,250,0.08)" }}>
-            {(["feed", "tasks", "memory", "proof"] as const).map(tab => (
+            {(["analytics", "feed", "tasks", "memory", "proof"] as const).map(tab => (
               <button key={tab} className="tab-btn" onClick={() => setActiveTab(tab)} style={{
                 background: activeTab === tab ? "rgba(167,139,250,0.12)" : "transparent",
                 border: activeTab === tab ? "1px solid rgba(167,139,250,0.25)" : "1px solid transparent",
                 borderBottom: activeTab === tab ? "1px solid transparent" : "none",
                 borderRadius: "8px 8px 0 0", padding: "7px 16px",
                 color: activeTab === tab ? "#c4b5fd" : "rgba(255,255,255,0.35)", cursor: "pointer",
-                fontSize: 12, fontWeight: 600, transition: "all 0.15s",
+                fontSize: 12, fontWeight: 600, transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6
               }}>
-                {tab === "feed" ? "🔴 Live Feed" : tab === "tasks" ? `📋 Cases (${tasks.length})` : tab === "memory" ? `🧠 Moss Memory (${learnedRules.length})` : "🏆 Proof"}
+                {tab === "analytics" ? <><LayoutDashboard size={14}/> Dashboard</> : tab === "feed" ? "🔴 Live Feed" : tab === "tasks" ? `📋 Cases (${tasks.length})` : tab === "memory" ? `🧠 Moss Memory (${learnedRules.length})` : "🏆 Proof"}
               </button>
             ))}
           </div>
 
           {/* Tab Content */}
           <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+
+            {/* ── ANALYTICS TAB ── */}
+            {activeTab === "analytics" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+                  <GlassCard style={{ padding: 16 }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><Globe size={14}/> Jurisdiction Exposure</div>
+                    <div style={{ height: 160 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={[
+                            { name: "US", value: 45, color: "#a78bfa" },
+                            { name: "EU", value: 30, color: "#10b981" },
+                            { name: "APAC", value: 15, color: "#f97316" },
+                            { name: "LATAM", value: 10, color: "#3b82f6" }
+                          ]} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={2}>
+                            {
+                              [
+                                { name: "US", value: 45, color: "#a78bfa" },
+                                { name: "EU", value: 30, color: "#10b981" },
+                                { name: "APAC", value: 15, color: "#f97316" },
+                                { name: "LATAM", value: 10, color: "#3b82f6" }
+                              ].map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))
+                            }
+                          </Pie>
+                          <RechartsTooltip contentStyle={{ background: "rgba(7,4,19,0.9)", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 8, fontSize: 12 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </GlassCard>
+                  
+                  <GlassCard style={{ padding: 16, gridColumn: "span 2" }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><TrendingUp size={14}/> Risk Timeline</div>
+                    <div style={{ height: 160 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={[
+                          { time: "09:00", risk: 20 }, { time: "10:00", risk: 45 }, { time: "11:00", risk: 30 },
+                          { time: "12:00", risk: 80 }, { time: "13:00", risk: 50 }, { time: "14:00", risk: 90 }, { time: "15:00", risk: 40 }
+                        ]}>
+                          <defs>
+                            <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="time" stroke="rgba(255,255,255,0.2)" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis stroke="rgba(255,255,255,0.2)" fontSize={10} tickLine={false} axisLine={false} />
+                          <RechartsTooltip contentStyle={{ background: "rgba(7,4,19,0.9)", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 8, fontSize: 12 }} />
+                          <Area type="monotone" dataKey="risk" stroke="#ef4444" fillOpacity={1} fill="url(#colorRisk)" strokeWidth={2} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </GlassCard>
+                </div>
+                
+                <GlassCard style={{ padding: 16 }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><Activity size={14}/> Top Alert Types</div>
+                  <div style={{ height: 200 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={[
+                        { name: "Structuring", count: 120 }, { name: "Insider Trading", count: 45 }, { name: "Sanctions", count: 80 }, { name: "Fraud", count: 150 }
+                      ]} layout="vertical" margin={{ top: 0, right: 0, left: 40, bottom: 0 }}>
+                        <XAxis type="number" hide />
+                        <YAxis type="category" dataKey="name" stroke="rgba(255,255,255,0.6)" fontSize={10} tickLine={false} axisLine={false} width={100} />
+                        <RechartsTooltip cursor={{ fill: "rgba(255,255,255,0.05)" }} contentStyle={{ background: "rgba(7,4,19,0.9)", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 8, fontSize: 12 }} />
+                        <Bar dataKey="count" fill="#fbbf24" radius={[0, 4, 4, 0]} barSize={16} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </GlassCard>
+              </div>
+            )}
 
             {/* ── FEED TAB ── */}
             {activeTab === "feed" && (
@@ -1446,25 +1556,7 @@ Action   = score≥ 75 → REPORT_TO_FIU
           onDisconnected={() => setVoiceActive(false)}
         >
           <RoomAudioRenderer />
-          <div style={{ 
-            position: "fixed", bottom: 24, right: 24, zIndex: 100, 
-            background: "rgba(7,4,19,0.85)", border: "1px solid rgba(167,139,250,0.3)", 
-            borderRadius: 16, padding: "16px 20px", backdropFilter: "blur(20px)",
-            boxShadow: "0 10px 40px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 12,
-            width: 320, animation: "fadeUp 0.3s ease"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <PulseDot color="#10b981" size={8} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981" }}>Voice Assistant Active</span>
-              </div>
-              <button onClick={() => setVoiceActive(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 16 }}>✕</button>
-            </div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>Speak directly to the AI Compliance Officer.</div>
-            <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: 12 }}>
-              <VoiceAssistantControlBar />
-            </div>
-          </div>
+          <VoiceVisualizerOverlay onClose={() => setVoiceActive(false)} />
         </LiveKitRoom>
       )}
     </div>
