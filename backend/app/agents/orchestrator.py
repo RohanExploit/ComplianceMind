@@ -221,7 +221,7 @@ class BaseComplianceAgent:
 
     def _synthesize_fallback(self, query: str, context: list[dict], extra_context: str = "") -> str:
         ctx_bullets = "\n".join([
-            f"- **[{c['source'].upper()}]** ({'✅ Learned Rule' if c.get('is_learned_rule') else f'{c[\"score\"]:.0%} match'}): {c['text'][:150]}"
+            f"- **[{c['source'].upper()}]** ({'✅ Learned Rule' if c.get('is_learned_rule') else str(round(c.get('score', 0)*100)) + '% match'}): {c['text'][:150]}"
             for c in context[:3]
         ]) or "- Verified against active compliance corpus (Moss in-process retrieval)."
 
@@ -277,6 +277,11 @@ class BaseComplianceAgent:
 
         elif self.role == "drafter":
             finding_id = f"AUDIT-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:4].upper()}"
+            if risk_score < 25:
+                remediation = "1. **Auto-clearance:** Cleared for automatic ledger reconciliation.\n2. **Retention:** Standard archiving (5 years).\n3. **Action:** No remediation required."
+            else:
+                remediation = "1. **Immediate Freeze (SLA: 2 Hours):** Impose trading/disbursement freeze on flagged accounts.\n2. **Evidentiary Preservation (SLA: 24 Hours):** Secure IP logs, trade tickets, communications.\n3. **Regulatory Notification (SLA: 7 Days):** Submit STR / formal disclosure to competent authority."
+
             return (
                 f"### Formal Compliance {'Review Memorandum' if risk_score < 25 else 'Audit Finding & Remediation'}\n\n"
                 f"**Finding ID:** `{finding_id}`\n"
@@ -285,7 +290,7 @@ class BaseComplianceAgent:
                 f"**Synthesized Evidence:**\n"
                 f"{ctx_bullets}\n\n"
                 f"**Prescribed Remediation:**\n"
-                f"{'1. **Auto-clearance:** Cleared for automatic ledger reconciliation.\\n2. **Retention:** Standard archiving (5 years).\\n3. **Action:** No remediation required.' if risk_score < 25 else '1. **Immediate Freeze (SLA: 2 Hours):** Impose trading/disbursement freeze on flagged accounts.\\n2. **Evidentiary Preservation (SLA: 24 Hours):** Secure IP logs, trade tickets, communications.\\n3. **Regulatory Notification (SLA: 7 Days):** Submit STR / formal disclosure to competent authority.'}"
+                f"{remediation}"
             )
 
         else:  # escalation
