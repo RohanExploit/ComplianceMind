@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { LiveKitRoom, RoomAudioRenderer, VoiceAssistantControlBar } from "@livekit/components-react";
+import "@livekit/components-styles";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -223,6 +225,26 @@ export default function WorkspacePage() {
   const [mossMode, setMossMode] = useState<"moss_live" | "mock_keyword" | null>(null);
   const [consensusLog, setConsensusLog] = useState<ConsensusData[]>([]); // live consensus history
   const [liveRiskCounts, setLiveRiskCounts] = useState({ critical: 0, high: 0, medium: 0, low: 0 });
+
+  // LiveKit Voice AI state
+  const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+
+  const connectToVoice = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/livekit-token?room=${workspaceId}&identity=${userName || "officer-" + Math.floor(Math.random()*1000)}`);
+      const data = await res.json();
+      if (data.token) {
+        setLiveKitToken(data.token);
+        setVoiceActive(true);
+        showToast("🎙️ Connected to Voice AI Assistant", "success");
+      } else {
+        throw new Error("No token");
+      }
+    } catch (err) {
+      showToast("Failed to connect to Voice AI. Check backend logs.", "error");
+    }
+  };
 
   const feedEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -567,6 +589,17 @@ export default function WorkspacePage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Voice AI Button */}
+          <button onClick={voiceActive ? () => setVoiceActive(false) : connectToVoice} style={{
+            display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+            background: voiceActive ? "rgba(239,68,68,0.15)" : "linear-gradient(135deg, rgba(167,139,250,0.15), rgba(79,70,229,0.15))",
+            border: `1px solid ${voiceActive ? "rgba(239,68,68,0.3)" : "rgba(167,139,250,0.3)"}`,
+            borderRadius: 99, padding: "5px 12px", fontSize: 11, fontWeight: 700,
+            color: voiceActive ? "#ef4444" : "#c4b5fd", transition: "all 0.2s"
+          }}>
+            {voiceActive ? "⏹ Disconnect Voice" : "🎙️ Talk to AI"}
+          </button>
+
           {/* LIVE vs MOCK Moss badge — judges must see this */}
           {mossMode !== null && (
             <div style={{
@@ -1399,6 +1432,37 @@ Action   = score≥ 75 → REPORT_TO_FIU
         }}>
           {toast.message}
         </div>
+      )}
+
+      {/* ─── LiveKit Voice Overlay ─────────────────────────────────────────────── */}
+      {liveKitToken && voiceActive && (
+        <LiveKitRoom 
+          serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://titanium-kwzimzfk.livekit.cloud"} 
+          token={liveKitToken} 
+          connect={true}
+          onDisconnected={() => setVoiceActive(false)}
+        >
+          <RoomAudioRenderer />
+          <div style={{ 
+            position: "fixed", bottom: 24, right: 24, zIndex: 100, 
+            background: "rgba(7,4,19,0.85)", border: "1px solid rgba(167,139,250,0.3)", 
+            borderRadius: 16, padding: "16px 20px", backdropFilter: "blur(20px)",
+            boxShadow: "0 10px 40px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 12,
+            width: 320, animation: "fadeUp 0.3s ease"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <PulseDot color="#10b981" size={8} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981" }}>Voice Assistant Active</span>
+              </div>
+              <button onClick={() => setVoiceActive(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>Speak directly to the AI Compliance Officer.</div>
+            <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: 12 }}>
+              <VoiceAssistantControlBar />
+            </div>
+          </div>
+        </LiveKitRoom>
       )}
     </div>
   );

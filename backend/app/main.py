@@ -200,6 +200,25 @@ async def startup():
 
 # ─── REST Endpoints ───────────────────────────────────────────────────────────
 
+@app.get("/api/livekit-token")
+async def get_livekit_token(room: str, identity: str):
+    import os
+    from livekit.api import AccessToken, VideoGrants
+    api_key = os.getenv("LIVEKIT_API_KEY")
+    api_secret = os.getenv("LIVEKIT_API_SECRET")
+    
+    if not api_key or not api_secret:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail="LiveKit credentials not configured in .env")
+
+    token = AccessToken(api_key, api_secret)
+    token.with_identity(identity)
+    token.with_name(identity)
+    token.with_grants(VideoGrants(room_join=True, room=room))
+    
+    return {"token": token.to_jwt()}
+
+
 @app.get("/api/health")
 async def health():
     stats = await moss_service.get_index_stats()
