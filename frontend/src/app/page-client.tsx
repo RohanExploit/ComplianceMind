@@ -1060,79 +1060,86 @@ export default function WorkspacePage() {
               </div>
             )}
 
-            {/* ── TASKS TAB ── */}
+            {/* ── TASKS TAB (KANBAN) ── */}
             {activeTab === "tasks" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {tasks.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,0.2)" }}>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>No cases yet</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Flag a compliance event to create a case</div>
-                  </div>
-                )}
-                {[...tasks].reverse().map(task => {
-                  const s = STATUS_STYLES[task.status];
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, height: "100%", alignItems: "start" }}>
+                {[
+                  { id: "awaiting_review", label: "To Review", color: "#fbbf24" },
+                  { id: "in_progress", label: "In Progress", color: "#6366f1" },
+                  { id: "completed", label: "Closed / Escalated", color: "#10b981" }
+                ].map(col => {
+                  const colTasks = tasks.filter(t => 
+                    (col.id === "completed" && (t.status === "approved" || t.status === "escalated")) || 
+                    t.status === col.id
+                  );
                   return (
-                    <GlassCard key={task.id} style={{ padding: 16, background: s.bg, borderColor: `${s.dot}25` }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.dot, marginTop: 5, flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: s.dot }}>{s.label}</span>
-                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>#{task.id}</span>
-                            {task.risk_score !== undefined && task.risk_score !== null && (
-                              <span style={{
-                                fontSize: 9, fontFamily: "monospace", fontWeight: 700, borderRadius: 99, padding: "1px 7px",
-                                color: task.risk_score >= 75 ? "#ef4444" : task.risk_score >= 50 ? "#f97316" : task.risk_score >= 25 ? "#fbbf24" : "#10b981",
-                                background: task.risk_score >= 75 ? "rgba(239,68,68,0.12)" : task.risk_score >= 50 ? "rgba(249,115,22,0.12)" : task.risk_score >= 25 ? "rgba(251,191,36,0.1)" : "rgba(16,185,129,0.1)",
-                              }}>
-                                {task.risk_level || "?"} {task.risk_score}/100
-                              </span>
-                            )}
-                            {task.recommended_action && (
-                              <span style={{ fontSize: 9, padding: "1px 7px", borderRadius: 99, fontWeight: 700, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.05)" }}>
-                                → {task.recommended_action.replace(/_/g, " ")}
-                              </span>
-                            )}
-                            {task.priority && task.priority !== "normal" && (
-                              <span style={{
-                                fontSize: 9, padding: "1px 7px", borderRadius: 99, fontWeight: 700,
-                                background: task.priority === "critical" ? "rgba(239,68,68,0.15)" : "rgba(249,115,22,0.15)",
-                                color: task.priority === "critical" ? "#ef4444" : "#f97316",
-                              }}>{task.priority.toUpperCase()}</span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", marginBottom: 8 }}>{task.description}</div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>
-                            by <strong style={{ color: "rgba(255,255,255,0.5)" }}>{task.created_by}</strong> · {new Date(task.created_at).toLocaleString()}
-                          </div>
-                          {task.status === "awaiting_review" && (
-                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                              <button className="action-btn" onClick={() => handleApprove(task.id)} style={{
-                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(16,185,129,0.3)",
-                                background: "rgba(16,185,129,0.1)", color: "#10b981", fontSize: 12, fontWeight: 700,
-                                cursor: "pointer", transition: "all 0.15s",
-                              }}>✓ Approve</button>
-                              <button className="action-btn" onClick={() => handleEscalate(task.id)} style={{
-                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)",
-                                background: "rgba(239,68,68,0.1)", color: "#ef4444", fontSize: 12, fontWeight: 700,
-                                cursor: "pointer", transition: "all 0.15s",
-                              }}>🚨 Escalate to FIU</button>
-                              <button className="action-btn" onClick={() => handleExportSTR(task.id)} style={{
-                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)",
-                                background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: 12, fontWeight: 700,
-                                cursor: "pointer", transition: "all 0.15s",
-                              }}>📄 Export STR</button>
-                              <button className="action-btn" onClick={() => setCorrectionTarget({ taskId: task.id, text: task.description })} style={{
-                                padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(167,139,250,0.25)",
-                                background: "rgba(167,139,250,0.08)", color: "#c4b5fd", fontSize: 12, fontWeight: 700,
-                                cursor: "pointer", transition: "all 0.15s",
-                              }}>🧠 Teach Agent</button>
-                            </div>
-                          )}
+                    <div key={col.id} style={{ display: "flex", flexDirection: "column", gap: 10, background: "rgba(255,255,255,0.02)", padding: 12, borderRadius: 16, minHeight: 400 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: col.color }} />
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>{col.label}</span>
                         </div>
+                        <span style={{ fontSize: 11, background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: 99, color: "rgba(255,255,255,0.5)" }}>{colTasks.length}</span>
                       </div>
-                    </GlassCard>
+                      
+                      {colTasks.length === 0 && (
+                        <div style={{ textAlign: "center", padding: "40px 10px", color: "rgba(255,255,255,0.2)", fontSize: 12 }}>
+                          No cases
+                        </div>
+                      )}
+
+                      {colTasks.map(task => {
+                        const s = STATUS_STYLES[task.status];
+                        return (
+                          <GlassCard key={task.id} style={{ padding: 12, background: s.bg, borderColor: `${s.dot}25`, cursor: "grab" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>#{task.id}</span>
+                              {task.risk_score !== undefined && task.risk_score !== null && (
+                                <span style={{
+                                  fontSize: 9, fontFamily: "monospace", fontWeight: 700, borderRadius: 99, padding: "1px 6px",
+                                  color: task.risk_score >= 75 ? "#ef4444" : task.risk_score >= 50 ? "#f97316" : task.risk_score >= 25 ? "#fbbf24" : "#10b981",
+                                  background: task.risk_score >= 75 ? "rgba(239,68,68,0.12)" : task.risk_score >= 50 ? "rgba(249,115,22,0.12)" : task.risk_score >= 25 ? "rgba(251,191,36,0.1)" : "rgba(16,185,129,0.1)",
+                                }}>
+                                  {task.risk_level || "?"} {task.risk_score}/100
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginBottom: 8, lineHeight: 1.4 }}>{task.description.substring(0, 100)}{task.description.length > 100 ? "..." : ""}</div>
+                            
+                            {task.recommended_action && (
+                              <div style={{ fontSize: 9, padding: "3px 6px", borderRadius: 4, fontWeight: 600, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.05)", marginBottom: 8, display: "inline-block" }}>
+                                → {task.recommended_action.replace(/_/g, " ")}
+                              </div>
+                            )}
+
+                            {task.status === "awaiting_review" && (
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 4 }}>
+                                <button className="action-btn" onClick={() => handleApprove(task.id)} style={{
+                                  padding: "6px", borderRadius: 6, border: "1px solid rgba(16,185,129,0.3)",
+                                  background: "rgba(16,185,129,0.1)", color: "#10b981", fontSize: 10, fontWeight: 700,
+                                  cursor: "pointer", transition: "all 0.15s",
+                                }}>✓ Approve</button>
+                                <button className="action-btn" onClick={() => handleEscalate(task.id)} style={{
+                                  padding: "6px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.3)",
+                                  background: "rgba(239,68,68,0.1)", color: "#ef4444", fontSize: 10, fontWeight: 700,
+                                  cursor: "pointer", transition: "all 0.15s",
+                                }}>🚨 Escalate</button>
+                                <button className="action-btn" onClick={() => handleExportSTR(task.id)} style={{
+                                  padding: "6px", borderRadius: 6, border: "1px solid rgba(251,191,36,0.3)",
+                                  background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: 10, fontWeight: 700,
+                                  cursor: "pointer", transition: "all 0.15s", gridColumn: "span 2"
+                                }}>📄 Export STR</button>
+                                <button className="action-btn" onClick={() => setCorrectionTarget({ taskId: task.id, text: task.description })} style={{
+                                  padding: "6px", borderRadius: 6, border: "1px solid rgba(167,139,250,0.25)",
+                                  background: "rgba(167,139,250,0.08)", color: "#c4b5fd", fontSize: 10, fontWeight: 700,
+                                  cursor: "pointer", transition: "all 0.15s", gridColumn: "span 2"
+                                }}>🧠 Teach Agent</button>
+                              </div>
+                            )}
+                          </GlassCard>
+                        );
+                      })}
+                    </div>
                   );
                 })}
               </div>

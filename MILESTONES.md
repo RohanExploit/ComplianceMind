@@ -44,5 +44,17 @@ Transformed the frontend into a visually stunning, data-rich command center by i
 - **Vercel-Ready Build:** Ensured strict TypeScript compliance, preventing any build regressions.
 
 **Next Potential Leaps:**
-- Agentic Case Management System
 - Offline-First Moss SDK Integration
+
+## 🗂️ Checkpoint 4: Agentic Case Management System (Sep 25, 2026)
+
+**Summary:** 
+Transformed the basic task list into a full-fledged Kanban-style Agentic Case Management Board to track active investigations and escalations.
+
+**Key Achievements:**
+- **Kanban Architecture:** Organized cases into "To Review", "In Progress", and "Closed / Escalated" columns.
+- **Dynamic Task Mapping:** Re-engineered the UI to dynamically map tasks into their respective columns based on real-time WebSocket state changes.
+- **Inline Action Buttons:** FIU Escalation and "Teach Agent" buttons are now neatly embedded within individual case cards for immediate actioning.
+
+**Next Potential Leaps:**
+- Offline-First Moss SDK Integration (Air-gapped security)
