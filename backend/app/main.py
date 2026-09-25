@@ -1,6 +1,7 @@
 """
 ComplianceMind — FastAPI Application
-AI-Native Compliance Workspace (YC F26 RFS #12)
+AI-Native Compliance Workspace (YC F26 RFS #12) v2.1
+FIXES: ConsensusResult, calibrated risk scores, session-history context, parallel benchmark
 Real-time multiplayer: compliance officers + AI agents share one workspace.
 
 TOP 10 — MOSS HACKATHON BUILD (September 2026)
@@ -301,11 +302,7 @@ async def flag_event(req: FlagRequest):
     )
 
     try:
-        if req.run_full_pipeline:
-            results = await orchestrator.run_full_pipeline(
-                req.description, req.workspace_id, task_id
-            )
-        elif req.target_agent:
+        if req.target_agent:
             results = await orchestrator.run_single_agent(
                 req.target_agent, req.description, req.workspace_id, task_id
             )
@@ -323,16 +320,28 @@ async def flag_event(req: FlagRequest):
         "task_id": task_id,
         "workspace_id": req.workspace_id,
         "priority": req.priority,
+        "consensus": {
+            "risk_level": results.risk_level,
+            "risk_score": results.risk_score,
+            "confidence": results.confidence,
+            "recommended_action": results.recommended_action,
+            "phase1_wall_ms": results.phase1_wall_ms,
+            "phase2_wall_ms": results.phase2_wall_ms,
+            "total_wall_ms": results.total_wall_ms,
+            "moss_avg_latency_ms": results.moss_avg_latency_ms,
+        },
         "responses": [
             {
                 "agent": r.agent_name,
                 "role": r.role,
                 "content": r.content,
                 "retrieval_latency_ms": r.latency_ms,
+                "risk_score": r.risk_score,
+                "confidence": r.confidence,
                 "context_used": r.context_used,
                 "timestamp": r.timestamp,
             }
-            for r in results
+            for r in results.agents
         ],
     }
 
@@ -507,32 +516,57 @@ async def workspace_ws(websocket: WebSocket, workspace_id: str):
 
                 # Run agents — broadcast each result as it arrives
                 if target_agent:
-                    results = await orchestrator.run_single_agent(
+                    consensus = await orchestrator.run_single_agent(
                         target_agent, content, workspace_id, task_id
                     )
                 else:
-                    results = await orchestrator.run_full_pipeline(
+                    consensus = await orchestrator.run_full_pipeline(
                         content, workspace_id, task_id
                     )
 
-                for result in results:
+                for result in consensus.agents:
                     await workspace_state.broadcast(workspace_id, {
                         "type": "agent_response",
                         "agent": result.agent_name,
                         "role": result.role,
                         "content": result.content,
                         "retrieval_latency_ms": result.latency_ms,
+                        "risk_score": result.risk_score,
+                        "confidence": result.confidence,
                         "context_used": result.context_used,
                         "task_id": task_id,
                         "timestamp": result.timestamp,
                     })
 
-                # Update task status
-                workspace_state.update_task(workspace_id, task_id, "awaiting_review")
+                # Broadcast consensus verdict
+                await workspace_state.broadcast(workspace_id, {
+                    "type": "consensus",
+                    "task_id": task_id,
+                    "risk_level": consensus.risk_level,
+                    "risk_score": consensus.risk_score,
+                    "confidence": consensus.confidence,
+                    "recommended_action": consensus.recommended_action,
+                    "phase1_wall_ms": consensus.phase1_wall_ms,
+                    "phase2_wall_ms": consensus.phase2_wall_ms,
+                    "total_wall_ms": consensus.total_wall_ms,
+                    "moss_avg_latency_ms": consensus.moss_avg_latency_ms,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+
+                # Update task status with consensus metadata
+                workspace_state.update_task(
+                    workspace_id, task_id, "awaiting_review",
+                    risk_level=consensus.risk_level,
+                    risk_score=consensus.risk_score,
+                    recommended_action=consensus.recommended_action,
+                )
                 await workspace_state.broadcast(workspace_id, {
                     "type": "task_updated",
                     "task_id": task_id,
                     "status": "awaiting_review",
+                    "risk_level": consensus.risk_level,
+                    "risk_score": consensus.risk_score,
+                    "recommended_action": consensus.recommended_action,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
 

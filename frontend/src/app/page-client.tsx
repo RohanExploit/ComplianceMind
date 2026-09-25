@@ -10,9 +10,23 @@ interface AgentResponse {
   role: string;
   content: string;
   retrieval_latency_ms: number;
-  context_used: Array<{ source: string; text: string; score: number }>;
+  risk_score?: number;
+  confidence?: number;
+  context_used: Array<{ source: string; text: string; score: number; moss_mode?: string }>;
   task_id: string;
   timestamp: string;
+}
+
+interface ConsensusData {
+  task_id: string;
+  risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  risk_score: number;
+  confidence: number;
+  recommended_action: "APPROVE" | "FLAG" | "BLOCK" | "REPORT_TO_FIU";
+  phase1_wall_ms: number;
+  phase2_wall_ms: number;
+  total_wall_ms: number;
+  moss_avg_latency_ms: number;
 }
 
 interface Task {
@@ -22,6 +36,9 @@ interface Task {
   created_by: string;
   created_at: string;
   priority?: string;
+  risk_level?: string;
+  risk_score?: number;
+  recommended_action?: string;
 }
 
 interface Presence {
@@ -32,7 +49,8 @@ interface Presence {
 
 type FeedItem =
   | { id: string; type: "user"; content: string; user: string; timestamp: string }
-  | { id: string; type: "agent"; agent: string; role: string; content: string; latency_ms: number; context_used: AgentResponse["context_used"]; task_id: string; timestamp: string }
+  | { id: string; type: "agent"; agent: string; role: string; content: string; latency_ms: number; risk_score?: number; confidence?: number; context_used: AgentResponse["context_used"]; task_id: string; timestamp: string }
+  | { id: string; type: "consensus"; data: ConsensusData; timestamp: string }
   | { id: string; type: "system"; content: string; timestamp: string }
   | { id: string; type: "task_event"; task_id: string; event: string; user?: string; timestamp: string };
 
@@ -190,17 +208,21 @@ export default function WorkspacePage() {
   const [latencyLog, setLatencyLog] = useState<Array<{ agent: string; ms: number }>>([]);
   const [activeAgents, setActiveAgents] = useState<Set<string>>(new Set());
   const [targetAgent, setTargetAgent] = useState<string | null>(null);
-  const [benchmarkResult, setBenchmarkResult] = useState<null | { avg_ms: number; all_under_10ms: boolean; mode: string; samples?: number[] }>(null);
+  const [benchmarkResult, setBenchmarkResult] = useState<null | { avg_ms: number; all_under_10ms: boolean; mode: string; mode_label?: string; samples?: number[]; parallel_wall_clock_ms?: number }>(null);
   const [learnedRules, setLearnedRules] = useState<Array<{ id: string; text: string; metadata?: Record<string, unknown> }>>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [correctionTarget, setCorrectionTarget] = useState<{ taskId: string; text: string } | null>(null);
   const [correctionInput, setCorrectionInput] = useState("");
   const [correctionType, setCorrectionType] = useState<"exception" | "false_positive" | "guideline">("exception");
   const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
-  const [activeTab, setActiveTab] = useState<"feed" | "tasks" | "memory">("feed");
+  const [activeTab, setActiveTab] = useState<"feed" | "tasks" | "memory" | "proof">("feed");
   const [riskSummary, setRiskSummary] = useState<{ risk_distribution?: Record<string, number>; jurisdiction_exposure?: Record<string, number> } | null>(null);
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
   const [priority, setPriority] = useState<"normal" | "high" | "critical">("normal");
+  // Judge fixes:
+  const [mossMode, setMossMode] = useState<"moss_live" | "mock_keyword" | null>(null);
+  const [consensusLog, setConsensusLog] = useState<ConsensusData[]>([]); // live consensus history
+  const [liveRiskCounts, setLiveRiskCounts] = useState({ critical: 0, high: 0, medium: 0, low: 0 });
 
   const feedEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -214,7 +236,10 @@ export default function WorkspacePage() {
   useEffect(() => { feedEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [feed]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/benchmark`).then(r => r.json()).then(d => setBenchmarkResult(d)).catch(() => {});
+    fetch(`${API_BASE}/api/benchmark`).then(r => r.json()).then(d => {
+      setBenchmarkResult(d);
+      setMossMode(d.mode === "moss_live" ? "moss_live" : "mock_keyword");
+    }).catch(() => {});
     fetch(`${API_BASE}/api/learned-rules/${workspaceId}`).then(r => r.json()).then(d => { if (d.rules) setLearnedRules(d.rules); }).catch(() => {});
     fetch(`${API_BASE}/api/analytics/risk-summary?workspace_id=${workspaceId}`).then(r => r.json()).then(d => setRiskSummary(d)).catch(() => {});
   }, [workspaceId]);
@@ -240,14 +265,38 @@ export default function WorkspacePage() {
           setFeed(prev => [...prev, {
             id: crypto.randomUUID(), type: "agent",
             agent: data.agent, role: data.role, content: data.content,
-            latency_ms: data.retrieval_latency_ms, context_used: data.context_used || [],
+            latency_ms: data.retrieval_latency_ms,
+            risk_score: data.risk_score,
+            confidence: data.confidence,
+            context_used: data.context_used || [],
             task_id: data.task_id, timestamp: data.timestamp,
           }]);
           setLatencyLog(prev => [...prev.slice(-29), { agent: data.agent, ms: data.retrieval_latency_ms }]);
+          // Set moss mode from first agent response
+          if (data.context_used?.[0]?.moss_mode) setMossMode(data.context_used[0].moss_mode);
           setActiveAgents(prev => { const n = new Set(prev); n.delete(data.role); if (n.size === 0) setIsLoading(false); return n; });
           break;
+        case "consensus": {
+          // Judge fix: live consensus verdict
+          const c: ConsensusData = data;
+          setConsensusLog(prev => [...prev.slice(-19), c]);
+          setFeed(prev => [...prev, { id: crypto.randomUUID(), type: "consensus", data: c, timestamp: data.timestamp }]);
+          // Update live risk counts
+          setLiveRiskCounts(prev => {
+            const k = c.risk_level.toLowerCase() as keyof typeof prev;
+            return { ...prev, [k]: (prev[k] || 0) + 1 };
+          });
+          setIsLoading(false);
+          setActiveAgents(new Set());
+          break;
+        }
         case "task_updated":
-          setTasks(prev => prev.map(t => t.id === data.task_id ? { ...t, status: data.status } : t));
+          setTasks(prev => prev.map(t => t.id === data.task_id ? {
+            ...t, status: data.status,
+            risk_level: data.risk_level,
+            risk_score: data.risk_score,
+            recommended_action: data.recommended_action,
+          } : t));
           setIsLoading(false); setActiveAgents(new Set());
           break;
         case "rule_learned":
@@ -473,7 +522,7 @@ export default function WorkspacePage() {
         </div>
 
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
-          {/* Workspace pill */}
+          {/* Workspace pill + copy URL */}
           <div style={{
             display: "flex", alignItems: "center", gap: 6,
             background: "rgba(167,139,250,0.08)", border: "1px solid rgba(167,139,250,0.18)",
@@ -481,6 +530,17 @@ export default function WorkspacePage() {
           }}>
             <span style={{ color: "rgba(255,255,255,0.4)" }}>room:</span>
             <span style={{ color: "#c4b5fd", fontWeight: 600 }}>{workspaceId}</span>
+            <button
+              title="Copy room URL for multiplayer"
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                showToast("🔗 Room URL copied! Share with teammates.", "success");
+              }}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: "rgba(167,139,250,0.6)", padding: "0 2px", fontSize: 12,
+              }}
+            >📋</button>
           </div>
 
           {/* Connection */}
@@ -507,6 +567,19 @@ export default function WorkspacePage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* LIVE vs MOCK Moss badge — judges must see this */}
+          {mossMode !== null && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 5,
+              background: mossMode === "moss_live" ? "rgba(16,185,129,0.1)" : "rgba(251,191,36,0.08)",
+              border: `1px solid ${mossMode === "moss_live" ? "rgba(16,185,129,0.3)" : "rgba(251,191,36,0.25)"}`,
+              borderRadius: 99, padding: "3px 10px", fontSize: 10, fontWeight: 700,
+              color: mossMode === "moss_live" ? "#10b981" : "#fbbf24",
+            }}>
+              {mossMode === "moss_live" ? "🟢 MOSS LIVE" : "🟡 MOCK MODE"}
+            </div>
+          )}
+
           {/* Moss latency */}
           {benchmarkResult && (
             <button onClick={() => setShowBenchmarkModal(true)} style={{
@@ -514,8 +587,8 @@ export default function WorkspacePage() {
               background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)",
               borderRadius: 99, padding: "3px 10px", fontSize: 11,
             }}>
-              <span style={{ color: "rgba(255,255,255,0.4)" }}>Moss avg</span>
-              <span style={{ color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>{benchmarkResult.avg_ms}ms</span>
+              <span style={{ color: "rgba(255,255,255,0.4)" }}>⚡ Moss</span>
+              <span style={{ color: "#10b981", fontFamily: "monospace", fontWeight: 700 }}>{benchmarkResult.avg_ms}ms avg</span>
             </button>
           )}
 
@@ -548,17 +621,31 @@ export default function WorkspacePage() {
           display: "flex", flexDirection: "column", gap: 0, overflow: "auto", flexShrink: 0,
           padding: 14, paddingTop: 16,
         }}>
-          {/* Risk Distribution */}
+          {/* Risk Distribution — LIVE updates via WebSocket consensus */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Risk Overview</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Risk Overview</div>
+              {(liveRiskCounts.critical + liveRiskCounts.high + liveRiskCounts.medium + liveRiskCounts.low) > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: "#10b981" }}>
+                  <PulseDot color="#10b981" size={5} />
+                  live
+                </div>
+              )}
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {[
-                { label: "Critical", color: "#ef4444", count: riskSummary?.risk_distribution?.critical ?? 0 },
-                { label: "High", color: "#f97316", count: riskSummary?.risk_distribution?.high ?? 0 },
-                { label: "Medium", color: "#fbbf24", count: riskSummary?.risk_distribution?.medium ?? 0 },
-                { label: "Low", color: "#10b981", count: riskSummary?.risk_distribution?.low ?? 0 },
-              ].map(({ label, color, count }) => {
-                const total = riskSummary?.risk_distribution?.total || 1;
+                { label: "Critical", color: "#ef4444", key: "critical" as const },
+                { label: "High",     color: "#f97316", key: "high" as const },
+                { label: "Medium",   color: "#fbbf24", key: "medium" as const },
+                { label: "Low",      color: "#10b981", key: "low" as const },
+              ].map(({ label, color, key }) => {
+                // FIX: merge live session counts + API baseline
+                const baseCount = riskSummary?.risk_distribution?.[key] ?? 0;
+                const count = baseCount + (liveRiskCounts[key] || 0);
+                const total = Math.max(1,
+                  (riskSummary?.risk_distribution?.total ?? 0) +
+                  liveRiskCounts.critical + liveRiskCounts.high + liveRiskCounts.medium + liveRiskCounts.low
+                );
                 const pct = Math.round((count / total) * 100);
                 return (
                   <div key={label}>
@@ -574,6 +661,8 @@ export default function WorkspacePage() {
               })}
             </div>
           </div>
+
+
 
           {/* Jurisdiction Exposure */}
           {riskSummary?.jurisdiction_exposure && Object.keys(riskSummary.jurisdiction_exposure).length > 0 && (
@@ -642,7 +731,7 @@ export default function WorkspacePage() {
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 2, padding: "10px 16px 0", borderBottom: "1px solid rgba(167,139,250,0.08)" }}>
-            {(["feed", "tasks", "memory"] as const).map(tab => (
+            {(["feed", "tasks", "memory", "proof"] as const).map(tab => (
               <button key={tab} className="tab-btn" onClick={() => setActiveTab(tab)} style={{
                 background: activeTab === tab ? "rgba(167,139,250,0.12)" : "transparent",
                 border: activeTab === tab ? "1px solid rgba(167,139,250,0.25)" : "1px solid transparent",
@@ -651,7 +740,7 @@ export default function WorkspacePage() {
                 color: activeTab === tab ? "#c4b5fd" : "rgba(255,255,255,0.35)", cursor: "pointer",
                 fontSize: 12, fontWeight: 600, transition: "all 0.15s",
               }}>
-                {tab === "feed" ? "🔴 Live Feed" : tab === "tasks" ? `📋 Cases (${tasks.length})` : `🧠 Moss Memory (${learnedRules.length})`}
+                {tab === "feed" ? "🔴 Live Feed" : tab === "tasks" ? `📋 Cases (${tasks.length})` : tab === "memory" ? `🧠 Moss Memory (${learnedRules.length})` : "🏆 Proof"}
               </button>
             ))}
           </div>
@@ -695,7 +784,18 @@ export default function WorkspacePage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                               <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</span>
-                              <LatencyBadge ms={item.latency_ms} />
+                              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", fontFamily: "monospace" }}>⚡ Moss {item.latency_ms.toFixed(1)}ms</span>
+                              {item.risk_score !== undefined && item.risk_score !== null && (
+                                <span style={{
+                                  fontSize: 9, fontFamily: "monospace", fontWeight: 700,
+                                  color: item.risk_score >= 75 ? "#ef4444" : item.risk_score >= 50 ? "#f97316" : item.risk_score >= 25 ? "#fbbf24" : "#10b981",
+                                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)",
+                                  borderRadius: 99, padding: "1px 6px",
+                                }}>score: {item.risk_score}/100</span>
+                              )}
+                              {item.confidence !== undefined && item.confidence !== null && (
+                                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>conf: {Math.round((item.confidence || 0) * 100)}%</span>
+                              )}
                               <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginLeft: "auto" }}>
                                 {new Date(item.timestamp).toLocaleTimeString()}
                               </span>
@@ -717,7 +817,9 @@ export default function WorkspacePage() {
                                         background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
                                         color: "rgba(255,255,255,0.4)",
                                       }}>
-                                        <span style={{ color: "#c4b5fd", fontWeight: 600 }}>[{c.source}]</span> {c.text.slice(0, 120)}…
+                                        <span style={{ color: "#c4b5fd", fontWeight: 600 }}>[{c.source}]</span>
+                                        {c.moss_mode === "moss_live" && <span style={{ fontSize: 8, color: "#10b981", marginLeft: 4 }}>LIVE</span>}
+                                        {" "}{c.text.slice(0, 120)}…
                                       </div>
                                     ))}
                                   </div>
@@ -739,6 +841,36 @@ export default function WorkspacePage() {
                     {item.type === "system" && (
                       <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.25)", padding: "2px 0" }}>{item.content}</div>
                     )}
+                    {item.type === "consensus" && (() => {
+                      const c = item.data;
+                      const levelColors: Record<string, string> = { CRITICAL: "#ef4444", HIGH: "#f97316", MEDIUM: "#fbbf24", LOW: "#10b981" };
+                      const actionEmoji: Record<string, string> = { REPORT_TO_FIU: "🚨", BLOCK: "🚫", FLAG: "🚩", APPROVE: "✅" };
+                      const lvlColor = levelColors[c.risk_level] || "#a78bfa";
+                      return (
+                        <div style={{
+                          border: `1px solid ${lvlColor}40`, borderRadius: 12,
+                          background: `${lvlColor}08`, padding: "14px 16px",
+                          animation: "fadeUp 0.4s ease",
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                            <div style={{
+                              fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                              color: lvlColor, background: `${lvlColor}18`,
+                              border: `1px solid ${lvlColor}40`, borderRadius: 99, padding: "3px 12px",
+                            }}>CONSENSUS: {c.risk_level}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: lvlColor, fontFamily: "monospace" }}>{c.risk_score}/100</div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>conf: {Math.round(c.confidence * 100)}%</div>
+                            <div style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700 }}>{actionEmoji[c.recommended_action]} {c.recommended_action.replace(/_/g, " ")}</div>
+                          </div>
+                          <div style={{ display: "flex", gap: 12, fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>
+                            <span>⏱ Phase 1: {c.phase1_wall_ms}ms</span>
+                            <span>⏱ Phase 2: {c.phase2_wall_ms}ms</span>
+                            <span>☀️ Total: {c.total_wall_ms}ms</span>
+                            <span>⚡ Moss avg: {c.moss_avg_latency_ms}ms</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {item.type === "task_event" && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: "rgba(167,139,250,0.05)", borderRadius: 8, border: "1px solid rgba(167,139,250,0.1)" }}>
                         <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#a78bfa", animation: "pulse 1.5s infinite" }} />
@@ -802,6 +934,20 @@ export default function WorkspacePage() {
                           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                             <span style={{ fontSize: 12, fontWeight: 700, color: s.dot }}>{s.label}</span>
                             <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>#{task.id}</span>
+                            {task.risk_score !== undefined && task.risk_score !== null && (
+                              <span style={{
+                                fontSize: 9, fontFamily: "monospace", fontWeight: 700, borderRadius: 99, padding: "1px 7px",
+                                color: task.risk_score >= 75 ? "#ef4444" : task.risk_score >= 50 ? "#f97316" : task.risk_score >= 25 ? "#fbbf24" : "#10b981",
+                                background: task.risk_score >= 75 ? "rgba(239,68,68,0.12)" : task.risk_score >= 50 ? "rgba(249,115,22,0.12)" : task.risk_score >= 25 ? "rgba(251,191,36,0.1)" : "rgba(16,185,129,0.1)",
+                              }}>
+                                {task.risk_level || "?"} {task.risk_score}/100
+                              </span>
+                            )}
+                            {task.recommended_action && (
+                              <span style={{ fontSize: 9, padding: "1px 7px", borderRadius: 99, fontWeight: 700, color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.05)" }}>
+                                → {task.recommended_action.replace(/_/g, " ")}
+                              </span>
+                            )}
                             {task.priority && task.priority !== "normal" && (
                               <span style={{
                                 fontSize: 9, padding: "1px 7px", borderRadius: 99, fontWeight: 700,
@@ -876,7 +1022,95 @@ export default function WorkspacePage() {
                 ))}
               </div>
             )}
-          </div>
+
+            {/* ── PROOF TAB ── */}
+            {activeTab === "proof" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Moss Benchmark Proof */}
+                <GlassCard style={{ padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>⚡ Moss Retrieval Benchmark</div>
+                  {benchmarkResult ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 20 }}>
+                        {[
+                          { label: "Avg", value: `${benchmarkResult.avg_ms}ms`, color: "#10b981" },
+                          { label: "Min", value: `${benchmarkResult.min_ms ?? "?"}ms`, color: "#10b981" },
+                          { label: "Max", value: `${benchmarkResult.max_ms ?? "?"}ms`, color: benchmarkResult.max_ms > 10 ? "#f97316" : "#10b981" },
+                          { label: "Sub-10ms", value: benchmarkResult.all_under_10ms ? "100%" : "partial", color: benchmarkResult.all_under_10ms ? "#10b981" : "#ef4444" },
+                        ].map(m => (
+                          <div key={m.label} style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: m.color, fontFamily: "monospace" }}>{m.value}</div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>{m.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 10, color: benchmarkResult.mode === "moss_live" ? "#10b981" : "#fbbf24", fontWeight: 700, marginTop: 4 }}>
+                        {benchmarkResult.mode_label || (benchmarkResult.mode === "moss_live" ? "🟢 Live Moss (in-process, zero network hop)" : "🟡 Mock keyword mode — set MOSS_PROJECT_ID/KEY for real proof")}
+                      </div>
+                      {benchmarkResult.parallel_wall_clock_ms && (
+                        <div style={{ fontSize: 10, color: "#a78bfa" }}>⏱ 10 queries in parallel: {benchmarkResult.parallel_wall_clock_ms}ms wall-clock (asyncio.gather)</div>
+                      )}
+                      {benchmarkResult.samples && (
+                        <div>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Per-query latencies:</div>
+                          <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 32 }}>
+                            {benchmarkResult.samples.map((s, i) => {
+                              const h = Math.max(6, Math.min(32, (s / 15) * 32));
+                              const c = s < 5 ? "#10b981" : s < 10 ? "#fbbf24" : "#ef4444";
+                              return <div key={i} title={`Query ${i+1}: ${s.toFixed(2)}ms`} style={{ flex: 1, height: h, background: c, borderRadius: 2 }} />;
+                            })}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
+                            <span>Q1</span><span>Q5</span><span>Q10</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Loading benchmark…</div>}
+                </GlassCard>
+
+                {/* Consensus History */}
+                <GlassCard style={{ padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>🤝 Consensus Verdicts This Session</div>
+                  {consensusLog.length === 0 ? (
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No events analyzed yet. Flag a compliance event to see consensus scoring.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {consensusLog.map((c, i) => {
+                        const lc: Record<string, string> = { CRITICAL: "#ef4444", HIGH: "#f97316", MEDIUM: "#fbbf24", LOW: "#10b981" };
+                        const col = lc[c.risk_level] || "#a78bfa";
+                        return (
+                          <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 10px", background: `${col}08`, border: `1px solid ${col}25`, borderRadius: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: col, minWidth: 70 }}>{c.risk_level}</div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: col, fontFamily: "monospace" }}>{c.risk_score}/100</div>
+                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>conf: {Math.round(c.confidence * 100)}%</div>
+                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginLeft: "auto" }}>{c.total_wall_ms}ms total</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </GlassCard>
+
+                {/* Architecture Proof */}
+                <GlassCard style={{ padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>🏗️ Pipeline Architecture</div>
+                  <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>{`Phase 1 — asyncio.gather (PARALLEL)
+├─ 🔎 RegScanner  → Moss: regulations index
+└─ 📊 RiskAnalyst → Moss: transactions + violations
+         ↓ phase1_summary → phase2
+Phase 2 — asyncio.gather (PARALLEL)
+├─ 📝 AuditDrafter → Moss: all 5 indexes
+└─ 🚨 Escalation  → Moss: all 5 indexes
+         ↓ consensus scoring
+Consensus = RegScanner×40% + RiskAnalyst×60%
+Action   = score≥ 75 → REPORT_TO_FIU
+           score≥ 50 → BLOCK
+           score≥ 25 → FLAG
+           score < 25 → APPROVE`}</pre>
+                </GlassCard>
+              </div>
+            )}          </div>
 
           {/* ─── Input Bar ────────────────────────────────────────────────────── */}
           <div style={{
@@ -981,8 +1215,9 @@ export default function WorkspacePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
                   { label: "Avg Latency", value: `${benchmarkResult.avg_ms}ms`, color: "#10b981" },
-                  { label: "Mode", value: benchmarkResult.mode === "live_moss" ? "🟢 Live Moss" : "🟡 Mock", color: benchmarkResult.mode === "live_moss" ? "#10b981" : "#fbbf24" },
+                  { label: "Mode", value: benchmarkResult.mode_label || (benchmarkResult.mode === "moss_live" ? "🟢 Live Moss" : "🟡 Mock"), color: benchmarkResult.mode === "moss_live" ? "#10b981" : "#fbbf24" },
                   { label: "Sub-10ms", value: benchmarkResult.all_under_10ms ? "✅ All passed" : "⚠️ Some >10ms", color: benchmarkResult.all_under_10ms ? "#10b981" : "#f97316" },
+                  ...(benchmarkResult.parallel_wall_clock_ms ? [{ label: "Parallel 10q", value: `${benchmarkResult.parallel_wall_clock_ms}ms`, color: "#a78bfa" }] : []),
                 ].map(m => (
                   <div key={m.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
                     <span style={{ color: "rgba(255,255,255,0.4)" }}>{m.label}</span>
