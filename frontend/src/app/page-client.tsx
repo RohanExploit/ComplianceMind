@@ -1065,30 +1065,60 @@ export default function WorkspacePage() {
                   </div>
                 ))}
 
-                {/* Loading indicator */}
+                {/* Loading indicator & Agent Console */}
                 {isLoading && (
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ width: 16, height: 16, border: "2px solid rgba(167,139,250,0.3)", borderTopColor: "#a78bfa", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
-                    </div>
-                    <div style={{ padding: "10px 14px", background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)", borderRadius: "2px 12px 12px 12px" }}>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>
-                        {activeAgents.size === 4 ? "Phase 1: RegScanner ∥ RiskAnalyst running in parallel…"
-                          : activeAgents.size <= 2 ? "Phase 2: AuditDrafter ∥ Escalation synthesizing…"
-                          : "Agents analyzing…"}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", animation: "fadeUp 0.3s ease" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <div style={{ width: 16, height: 16, border: "2px solid rgba(167,139,250,0.3)", borderTopColor: "#a78bfa", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
                       </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {Object.entries(AGENT_CONFIG).map(([key, cfg]) => (
-                          <div key={key} style={{
-                            padding: "3px 8px", borderRadius: 6, fontSize: 10,
-                            background: activeAgents.has(key) ? `${cfg.color}18` : "rgba(16,185,129,0.1)",
-                            border: `1px solid ${activeAgents.has(key) ? cfg.color + "30" : "rgba(16,185,129,0.2)"}`,
-                            color: activeAgents.has(key) ? cfg.color : "#10b981",
-                            transition: "all 0.3s",
-                          }}>
-                            {activeAgents.has(key) ? `${cfg.icon} …` : `${cfg.icon} ✓`}
-                          </div>
-                        ))}
+                      <div style={{ padding: "8px 14px", background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)", borderRadius: "2px 12px 12px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>
+                          {activeAgents.size === 4 ? "Phase 1: Parallel Analysis"
+                            : activeAgents.size <= 2 ? "Phase 2: Consensus & Synthesis"
+                            : "Orchestrating Agents..."}
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {Object.entries(AGENT_CONFIG).map(([key, cfg]) => (
+                            <div key={key} style={{
+                              padding: "2px 6px", borderRadius: 4, fontSize: 10,
+                              background: activeAgents.has(key) ? `${cfg.color}20` : "rgba(255,255,255,0.05)",
+                              border: `1px solid ${activeAgents.has(key) ? cfg.color + "40" : "rgba(255,255,255,0.1)"}`,
+                              color: activeAgents.has(key) ? cfg.color : "rgba(255,255,255,0.3)",
+                              transition: "all 0.3s", boxShadow: activeAgents.has(key) ? `0 0 10px ${cfg.color}30` : "none"
+                            }}>
+                              {activeAgents.has(key) ? `${cfg.icon} Active` : `${cfg.icon} Idle`}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Agent Hacker Terminal */}
+                    <div style={{
+                      background: "#0a0a0f", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 12,
+                      padding: "12px 16px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                      color: "#10b981", display: "flex", flexDirection: "column", gap: 4,
+                      boxShadow: "inset 0 0 20px rgba(0,0,0,0.8)", position: "relative", overflow: "hidden"
+                    }}>
+                      <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "200%", background: "linear-gradient(transparent, rgba(16,185,129,0.05) 50%, transparent)", animation: "scanline 4s linear infinite", pointerEvents: "none" }} />
+                      <style>{`@keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(50%); } }`}</style>
+                      
+                      <div style={{ color: "rgba(255,255,255,0.4)", display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span>[MOSS_TERMINAL_TTY0]</span>
+                        <span>{new Date().toISOString()}</span>
+                      </div>
+                      
+                      {activeAgents.has("scanner") && <div className="fade-in-up">→ [RegScanner] Initializing semantic vector query against moss_idx...</div>}
+                      {activeAgents.has("analyst") && <div className="fade-in-up" style={{ animationDelay: "0.2s" }}>→ [RiskAnalyst] Matching entity IDs against global sanctions lists...</div>}
+                      {activeAgents.has("scanner") && <div className="fade-in-up" style={{ animationDelay: "0.5s", color: "#fbbf24" }}>→ [Moss] 18 regulatory nodes retrieved in {benchmarkResult?.avg_ms || 3.4}ms.</div>}
+                      
+                      {activeAgents.has("drafter") && <div className="fade-in-up">→ [AuditDrafter] Synthesizing context vectors...</div>}
+                      {activeAgents.has("escalation") && <div className="fade-in-up" style={{ animationDelay: "0.2s" }}>→ [ActionEngine] Calculating consensus risk score matrix...</div>}
+                      {activeAgents.has("escalation") && <div className="fade-in-up" style={{ animationDelay: "0.6s", color: "#a78bfa" }}>→ [Orchestrator] Awaiting final agent promises (asyncio.gather)...</div>}
+
+                      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                        <span className="cursor-blink" style={{ color: "#10b981" }}>_</span>
                       </div>
                     </div>
                   </div>

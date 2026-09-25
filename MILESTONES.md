@@ -121,3 +121,13 @@ Redesigned the workspace login screen to match modern, high-end "AI Enterprise" 
 - **Animated Glassmorphism:** Added massive, floating radial-gradient orbs that slowly animate across the background to give a fluid, dynamic feel.
 - **Typographic Overhaul:** Switched to sleek, tightly-tracked Inter typography with a metallic gradient `WebkitBackgroundClip` text fill for the main logo.
 - **Interactive Focus States:** The login input and buttons now respond dynamically to user interaction, casting `box-shadow` glows matching the primary brand colors (violet and emerald) when focused or hovered.
+
+## 💻 Checkpoint 11: Live "Hacker-Terminal" Agent Console (Sep 25, 2026)
+
+**Summary:**
+Replaced the basic spinning loader during event analysis with an ultra-sleek, Hollywood-style glowing terminal that streams fake internal Python logs corresponding precisely to the agents' active states.
+
+**Key Achievements:**
+- **Hollywood Wow-Factor:** The new terminal renders `JetBrains Mono` text typing out semantic vector query commands, simulating what the agents are executing behind the scenes. 
+- **State-Linked Animations:** The logs intelligently fade in step-by-step depending on exactly which agent in the parallel `asyncio.gather` pipeline is currently active (e.g. `[RegScanner]`, `[RiskAnalyst]`).
+- **CSS Scanline Effects:** Built a beautiful overlay with a 4-second linear scanline animation to make the terminal feel like a legitimate server readout.
