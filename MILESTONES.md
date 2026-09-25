@@ -131,3 +131,30 @@ Replaced the basic spinning loader during event analysis with an ultra-sleek, Ho
 - **Hollywood Wow-Factor:** The new terminal renders `JetBrains Mono` text typing out semantic vector query commands, simulating what the agents are executing behind the scenes. 
 - **State-Linked Animations:** The logs intelligently fade in step-by-step depending on exactly which agent in the parallel `asyncio.gather` pipeline is currently active (e.g. `[RegScanner]`, `[RiskAnalyst]`).
 - **CSS Scanline Effects:** Built a beautiful overlay with a 4-second linear scanline animation to make the terminal feel like a legitimate server readout.
+
+## 📤 Checkpoint 12: Automated FIU Email Drafter (Sep 25, 2026)
+
+**Summary:**
+Added a one-click automated email drafter to instantly notify the Financial Intelligence Unit of India (FIU-IND) about escalated compliance events.
+
+**Key Achievements:**
+- **Zero-Latency Dispatch:** Added a "✉️ Draft FIU Email" button directly inside the Kanban board for any task that hits the `escalated` status.
+- **Agent Handoff:** The button instantly opens the officer's native email client (`mailto:fiu-ind@gov.in`), pre-populated with the exact Case ID, Risk Score, and Moss AI's synthesized remediation plan.
+
+## 🌍 Checkpoint 13: Global Jurisdiction Threat Radar (Sep 25, 2026)
+
+**Summary:**
+Implemented a dynamic Recharts Radar Map on the right sidebar to visually chart out international regulatory exposure.
+
+**Key Achievements:**
+- **Data Visualization:** The `RadarChart` beautifully maps out threat exposure across SEC (USA), FCA (UK), MAS (SG), FINMA (CH), and SEBI (IND).
+- **Premium Aesthetics:** Styled with the brand's signature Violet stroke and a translucent fill that perfectly blends with the Glassmorphism sidebar.
+
+## ☢️ Checkpoint 14: Zero-Trust Memory Purge (Sep 25, 2026)
+
+**Summary:**
+To prove our commitment to air-gapped security and data compliance, added a high-stakes "Purge Memory" function.
+
+**Key Achievements:**
+- **Data Shredding:** Officers can click "⚠️ Purge Cache" in the Memory Tab to instantly wipe the local `learnedRules` store.
+- **Visual Feedback:** A stark red toast notification instantly confirms the secure shredding of all localized Moss semantic vectors.

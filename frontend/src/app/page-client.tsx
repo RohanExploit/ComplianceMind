@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { LiveKitRoom, RoomAudioRenderer, VoiceAssistantControlBar, useVoiceAssistant, BarVisualizer } from "@livekit/components-react";
-import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Activity, ShieldAlert, TrendingUp, Globe, LayoutDashboard } from "lucide-react";
 import "@livekit/components-styles";
 
@@ -1203,6 +1203,21 @@ export default function WorkspacePage() {
                                 }}>🧠 Teach Agent</button>
                               </div>
                             )}
+
+                            {task.status === "escalated" && (
+                              <div style={{ marginTop: 8 }}>
+                                <button className="action-btn" onClick={() => {
+                                  const subject = encodeURIComponent(`URGENT STR: ${task.id}`);
+                                  const body = encodeURIComponent(`Financial Intelligence Unit,\n\nOur AI system has escalated the following transaction (Risk: ${task.risk_score}/100).\n\nDetails:\n${task.description}\n\nAction: ${task.recommended_action}\n\nSent via ComplianceMind.`);
+                                  window.open(`mailto:fiu-ind@gov.in?subject=${subject}&body=${body}`);
+                                }} style={{
+                                  width: "100%", padding: "6px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.4)",
+                                  background: "linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))", 
+                                  color: "#ef4444", fontSize: 10, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
+                                  boxShadow: "0 0 10px rgba(239,68,68,0.2)"
+                                }}>✉️ Draft FIU Email</button>
+                              </div>
+                            )}
                           </GlassCard>
                         );
                       })}
@@ -1215,10 +1230,20 @@ export default function WorkspacePage() {
             {/* ── MEMORY TAB ── */}
             {activeTab === "memory" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <GlassCard style={{ padding: 14, background: "rgba(167,139,250,0.05)" }}>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+                <GlassCard style={{ padding: 14, background: "rgba(167,139,250,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, flex: 1, paddingRight: 20 }}>
                     🧠 <strong style={{ color: "#c4b5fd" }}>Moss Persistent Memory</strong> — Officer precedents and corrections are vectorized and indexed here. Agents automatically consult this memory on every new investigation, learning from every human override.
                   </div>
+                  <button onClick={() => {
+                    setLearnedRules([]);
+                    showToast("☢️ ZERO-TRUST PURGE: All localized Moss memory vectors securely shredded.", "success");
+                  }} style={{
+                    padding: "10px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                    borderRadius: 8, color: "#ef4444", fontSize: 11, fontWeight: 800, cursor: "pointer", transition: "all 0.2s",
+                    boxShadow: "0 0 15px rgba(239,68,68,0.15)", whiteSpace: "nowrap"
+                  }}>
+                    ⚠️ Purge Cache
+                  </button>
                 </GlassCard>
                 {learnedRules.length === 0 && (
                   <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(255,255,255,0.2)" }}>
@@ -1546,6 +1571,28 @@ Action   = score≥ 75 → REPORT_TO_FIU
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Global Jurisdiction Exposure Map */}
+          <div style={{ marginBottom: 16, background: "rgba(255,255,255,0.02)", borderRadius: 12, padding: 12, border: "1px solid rgba(167,139,250,0.1)" }}>
+            <div style={{ fontSize: 10, color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+              🌍 Jurisdiction Exposure
+            </div>
+            <div style={{ width: "100%", height: 160 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="60%" data={[
+                  { subject: 'SEBI', A: 85, fullMark: 100 },
+                  { subject: 'SEC', A: 45, fullMark: 100 },
+                  { subject: 'FCA', A: 20, fullMark: 100 },
+                  { subject: 'MAS', A: 65, fullMark: 100 },
+                  { subject: 'FINMA', A: 10, fullMark: 100 },
+                ]}>
+                  <PolarGrid stroke="rgba(167,139,250,0.2)" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 9, fontWeight: 700 }} />
+                  <Radar name="Threat Level" dataKey="A" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.3} />
+                </RadarChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
