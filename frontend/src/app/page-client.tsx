@@ -479,80 +479,93 @@ export default function WorkspacePage() {
   if (!hasJoined) {
     return (
       <div style={{
-        minHeight: "100vh", background: "radial-gradient(ellipse 120% 80% at 50% -10%, #1a0a3e 0%, #0a0618 60%, #050210 100%)",
+        minHeight: "100vh", background: "#05030a", position: "relative", overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', sans-serif",
       }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
-          @keyframes ping { 75%,100% { transform: scale(2); opacity: 0; } }
-          @keyframes glow { 0%,100% { opacity:.6 } 50% { opacity:1 } }
-          @keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
-          @keyframes spin { to { transform: rotate(360deg) } }
-          * { box-sizing: border-box; }
-          ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.3); border-radius: 2px; }
+          @keyframes floatOrb1 { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(5vw, 10vh) scale(1.2); } }
+          @keyframes floatOrb2 { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(-5vw, -10vh) scale(1.1); } }
+          @keyframes fadeUp { from { opacity:0; transform:translateY(24px) } to { opacity:1; transform:translateY(0) } }
+          .login-btn:hover:not(:disabled) { box-shadow: 0 10px 40px rgba(139,92,246,0.3); transform: translateY(-2px); }
         `}</style>
 
-        <div style={{ animation: "fadeUp 0.6s ease", display: "flex", flexDirection: "column", alignItems: "center", gap: 32, padding: 24, maxWidth: 440, width: "100%" }}>
-          {/* Logo */}
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 8 }}>⚖️</div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: "white", letterSpacing: -1 }}>ComplianceMind</div>
-            <div style={{ fontSize: 13, color: "rgba(167,139,250,0.8)", marginTop: 6, fontWeight: 500 }}>AI-Native Multiplayer Compliance Workspace</div>
+        {/* Animated Background Orbs */}
+        <div style={{ position: "absolute", top: "-10%", left: "-10%", width: "50vw", height: "50vw", background: "radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 60%)", borderRadius: "50%", filter: "blur(60px)", animation: "floatOrb1 15s ease-in-out infinite alternate" }} />
+        <div style={{ position: "absolute", bottom: "-20%", right: "-10%", width: "60vw", height: "60vw", background: "radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 60%)", borderRadius: "50%", filter: "blur(80px)", animation: "floatOrb2 20s ease-in-out infinite alternate-reverse" }} />
+
+        <div style={{ position: "relative", zIndex: 10, animation: "fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1)", display: "flex", flexDirection: "column", alignItems: "center", gap: 36, padding: 24, maxWidth: 640, width: "100%" }}>
+          {/* Header */}
+          <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             <div style={{
-              marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6,
+              width: 80, height: 80, borderRadius: 24, background: "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(16,185,129,0.1))",
+              border: "1px solid rgba(139,92,246,0.3)", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 40, boxShadow: "0 0 60px rgba(139,92,246,0.2), inset 0 0 20px rgba(255,255,255,0.05)"
+            }}>⚖️</div>
+            <div>
+              <div style={{ fontSize: 44, fontWeight: 900, color: "white", letterSpacing: -1.5, background: "linear-gradient(to right, #fff, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ComplianceMind</div>
+              <div style={{ fontSize: 16, color: "rgba(167,139,250,0.8)", marginTop: 6, fontWeight: 500, letterSpacing: 0.5 }}>AI-Native Multiplayer Compliance Workspace</div>
+            </div>
+            <div style={{
+              marginTop: 6, display: "inline-flex", alignItems: "center", gap: 8,
               background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
-              borderRadius: 99, padding: "4px 14px", fontSize: 11, color: "#fbbf24", fontWeight: 700,
+              borderRadius: 99, padding: "6px 18px", fontSize: 12, color: "#fbbf24", fontWeight: 800,
+              boxShadow: "0 0 20px rgba(251,191,36,0.15)"
             }}>
               🏆 TOP 10 — MOSS HACKATHON
             </div>
           </div>
 
           {/* Stats row */}
-          <div style={{ display: "flex", gap: 16, width: "100%" }}>
+          <div style={{ display: "flex", gap: 20, width: "100%" }}>
             {[
-              { label: "Moss Retrieval", value: benchmarkResult ? `${benchmarkResult.avg_ms}ms` : "—", sub: "avg latency", color: "#10b981" },
-              { label: "Agents", value: "4", sub: "parallel pipeline", color: "#a78bfa" },
-              { label: "Regulations", value: "18+", sub: "indexed in Moss", color: "#22d3ee" },
+              { label: "Moss Retrieval", value: benchmarkResult ? `${benchmarkResult.avg_ms}ms` : "—", sub: "avg latency", color: "#10b981", bg: "rgba(16,185,129,0.05)" },
+              { label: "Agents", value: "4", sub: "parallel pipeline", color: "#a78bfa", bg: "rgba(139,92,246,0.05)" },
+              { label: "Regulations", value: "18+", sub: "indexed in Moss", color: "#22d3ee", bg: "rgba(6,182,212,0.05)" },
             ].map(s => (
-              <GlassCard key={s.label} style={{ flex: 1, padding: "12px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{s.sub}</div>
-              </GlassCard>
+              <div key={s.label} style={{ flex: 1, padding: "20px 16px", textAlign: "center", background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 20, backdropFilter: "blur(10px)", boxShadow: "0 10px 30px rgba(0,0,0,0.2)" }}>
+                <div style={{ fontSize: 26, fontWeight: 900, color: s.color, fontFamily: "'JetBrains Mono', monospace" }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 4, fontWeight: 500, letterSpacing: 0.5, textTransform: "uppercase" }}>{s.sub}</div>
+              </div>
             ))}
           </div>
 
           {/* Join form */}
-          <GlassCard style={{ width: "100%", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
-              Workspace: <span style={{ color: "#a78bfa" }}>{workspaceId}</span>
+          <div style={{ width: "100%", padding: 32, display: "flex", flexDirection: "column", gap: 20, background: "rgba(22,22,36,0.5)", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 24, backdropFilter: "blur(40px)", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>
+              Secure Workspace: <span style={{ color: "#a78bfa" }}>{workspaceId}</span>
             </div>
             <input
               value={userName}
               onChange={e => setUserName(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleJoin()}
-              placeholder="Your name (e.g. Rahul — AML Analyst)"
+              placeholder="Enter your name (e.g. Rahul — AML Analyst)"
               style={{
-                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(167,139,250,0.2)",
-                borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14, outline: "none", width: "100%",
+                background: "rgba(0,0,0,0.3)", border: "1px solid rgba(167,139,250,0.3)",
+                borderRadius: 14, padding: "16px 20px", color: "white", fontSize: 15, outline: "none", width: "100%",
+                transition: "border 0.2s, box-shadow 0.2s",
               }}
+              onFocus={e => { e.currentTarget.style.borderColor = "#a78bfa"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(167,139,250,0.1)"; }}
+              onBlur={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,0.3)"; e.currentTarget.style.boxShadow = "none"; }}
               autoFocus
             />
             <button
+              className="login-btn"
               onClick={handleJoin}
               disabled={!userName.trim()}
               style={{
-                background: userName.trim() ? "linear-gradient(135deg, #7c3aed, #4f46e5)" : "rgba(255,255,255,0.05)",
-                border: "none", borderRadius: 10, padding: "13px", color: "white",
-                fontSize: 14, fontWeight: 700, cursor: userName.trim() ? "pointer" : "not-allowed",
-                transition: "all 0.2s", letterSpacing: 0.3,
+                background: userName.trim() ? "linear-gradient(135deg, #8b5cf6, #4f46e5)" : "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "16px", color: "white",
+                fontSize: 15, fontWeight: 800, cursor: userName.trim() ? "pointer" : "not-allowed",
+                transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", letterSpacing: 0.5,
               }}
             >
-              Join Compliance Workspace →
+              Enter Compliance Interface →
             </button>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center" }}>
-              Share <code style={{ color: "#a78bfa" }}>?room={workspaceId}</code> for multiplayer
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center", fontWeight: 500 }}>
+              Share <code style={{ color: "#a78bfa", padding: "2px 6px", background: "rgba(167,139,250,0.1)", borderRadius: 4 }}>?room={workspaceId}</code> with other officers to join this session
             </div>
-          </GlassCard>
+          </div>
         </div>
       </div>
     );
