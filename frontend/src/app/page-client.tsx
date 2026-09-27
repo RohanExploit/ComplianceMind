@@ -256,6 +256,7 @@ export default function WorkspacePage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [presence, setPresence] = useState<Presence[]>([]);
   const [input, setInput] = useState("");
+  const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [latencyLog, setLatencyLog] = useState<Array<{ agent: string; ms: number }>>([]);
@@ -362,6 +363,11 @@ export default function WorkspacePage() {
           });
           setIsLoading(false);
           setActiveAgents(new Set());
+          
+          if ("speechSynthesis" in window) {
+            const ut = new SpeechSynthesisUtterance(`Analysis complete. Risk level is ${c.risk_level.replace("_", " ")}. Recommended action is ${c.recommended_action.replace(/_/g, " ")}.`);
+            window.speechSynthesis.speak(ut);
+          }
           break;
         }
         case "task_updated":
@@ -392,6 +398,30 @@ export default function WorkspacePage() {
   }, [workspaceId, showToast]);
 
   const handleJoin = () => { if (!userName.trim()) return; setHasJoined(true); connectWs(userName.trim()); };
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast("Voice input is not supported in this browser.", "error");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => prev ? prev + " " + transcript : transcript);
+      setIsListening(false);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+  }, [isListening, showToast]);
 
   const flagEvent = useCallback(() => {
     if (!input.trim() || isLoading) return;
@@ -1692,6 +1722,19 @@ export default function WorkspacePage() {
                   outline: "none", opacity: isLoading ? 0.5 : 1, transition: "border 0.2s",
                 }}
               />
+              <button
+                onClick={toggleListening}
+                style={{
+                  padding: "0 16px", borderRadius: 12,
+                  background: isListening ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${isListening ? "#ef4444" : "rgba(167,139,250,0.2)"}`,
+                  color: isListening ? "#ef4444" : "white", cursor: "pointer", transition: "all 0.2s",
+                  display: "flex", alignItems: "center", justifyContent: "center"
+                }}
+                title="Voice Input"
+              >
+                {isListening ? "🔴" : "🎤"}
+              </button>
               <button
                 onClick={flagEvent}
                 disabled={!input.trim() || isLoading}
