@@ -33,8 +33,11 @@ load_dotenv()
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
-TELEGRAM_TOKEN = "8880111769:AAEASyawYgi3j8YKZWy4oVQ7KtgH1Yq6mHk"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_URL = os.getenv("TELEGRAM_BACKEND_URL", "https://overthrow-scheme-entail.ngrok-free.dev")
+
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN is missing in .env")
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
