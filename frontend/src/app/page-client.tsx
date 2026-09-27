@@ -587,6 +587,17 @@ export default function WorkspacePage() {
         @keyframes spin { to { transform: rotate(360deg) } }
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+        @keyframes orbit { from { transform: rotate(0deg) translateX(38px) rotate(0deg); } to { transform: rotate(360deg) translateX(38px) rotate(-360deg); } }
+        @keyframes orbitReverse { from { transform: rotate(0deg) translateX(26px) rotate(0deg); } to { transform: rotate(-360deg) translateX(26px) rotate(360deg); } }
+        @keyframes glowPulse { 0%,100%{ box-shadow: 0 0 12px 2px currentColor; opacity:1; } 50%{ box-shadow: 0 0 28px 8px currentColor; opacity:0.8; } }
+        @keyframes flowDash { to { stroke-dashoffset: -24; } }
+        @keyframes scanLine { 0%{ top:0%; opacity:0.7; } 100%{ top:100%; opacity:0; } }
+        @keyframes particleDrift { 0%{ transform:translateY(0) translateX(0) scale(1); opacity:0.8; } 100%{ transform:translateY(-60px) translateX(var(--dx,10px)) scale(0); opacity:0; } }
+        @keyframes countUp { from{ opacity:0; transform:translateY(8px) scale(0.9); } to{ opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes nodeActivate { 0%{ transform:scale(1); } 50%{ transform:scale(1.06); } 100%{ transform:scale(1); } }
+        @keyframes beamFlow { 0%{ stroke-dashoffset:60; } 100%{ stroke-dashoffset:0; } }
+        @keyframes rotateRing { from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+        @keyframes fadeSlideIn { from{ opacity:0; transform:translateX(-12px); } to{ opacity:1; transform:translateX(0); } }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.25); border-radius: 2px; }
         input, textarea, button { font-family: 'Inter', sans-serif; }
@@ -594,6 +605,10 @@ export default function WorkspacePage() {
         .example-chip:hover { background: rgba(167,139,250,0.15) !important; border-color: rgba(167,139,250,0.4) !important; }
         .action-btn:hover { opacity: 0.85; transform: scale(0.98); }
         .feed-item { animation: fadeUp 0.3s ease; }
+        .proof-node { transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+        .proof-node:hover { transform: scale(1.04) translateY(-2px); }
+        .proof-metric-val { animation: countUp 0.6s cubic-bezier(0.34,1.56,0.64,1) both; }
+        .verdict-row { animation: fadeSlideIn 0.4s ease both; }
       `}</style>
 
       {/* ─── Top Bar ─────────────────────────────────────────────────────────── */}
@@ -1270,132 +1285,233 @@ export default function WorkspacePage() {
 
             {/* ── PROOF TAB ── */}
             {activeTab === "proof" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {/* Moss Benchmark Proof */}
-                <GlassCard style={{ padding: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>⚡ Moss Retrieval Benchmark</div>
-                  {benchmarkResult ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", gap: 20 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                {/* ── HERO: Animated Agent Pipeline ── */}
+                <GlassCard style={{ padding: 20, position: "relative", overflow: "hidden" }}>
+                  {/* Scanline effect */}
+                  <div style={{ position: "absolute", left: 0, right: 0, height: 2, background: "linear-gradient(90deg,transparent,rgba(167,139,250,0.4),transparent)", animation: "scanLine 3s linear infinite", pointerEvents: "none", zIndex: 0 }} />
+                  <div style={{ position: "relative", zIndex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", animation: "ping 1.5s ease infinite", boxShadow: "0 0 8px #10b981" }} />
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "white", letterSpacing: -0.3 }}>🕸️ Live Agent Execution Matrix</div>
+                      <div style={{ marginLeft: "auto", fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "monospace", letterSpacing: 1 }}>PHASE-PARALLEL · WEBSOCKET</div>
+                    </div>
+
+                    {/* SVG Pipeline Diagram */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+                      
+                      {/* Intake Node */}
+                      <div className="proof-node" style={{ background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.4)", padding: "8px 22px", borderRadius: 99, fontSize: 11, fontWeight: 700, color: "#c4b5fd", boxShadow: "0 0 20px rgba(167,139,250,0.15)" }}>
+                        📡 Event Intake · WebSocket
+                      </div>
+
+                      {/* Beam down */}
+                      <svg width="2" height="28" style={{ overflow: "visible" }}>
+                        <line x1="1" y1="0" x2="1" y2="28" stroke="rgba(167,139,250,0.3)" strokeWidth="1.5" strokeDasharray="4 4" style={{ animation: "flowDash 0.8s linear infinite" }} />
+                      </svg>
+
+                      {/* Phase 1 Label */}
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: "rgba(16,185,129,0.6)", textTransform: "uppercase", marginBottom: 8 }}>⚡ Phase 1 · asyncio.gather</div>
+
+                      {/* Phase 1 Nodes */}
+                      <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
                         {[
-                          { label: "Avg", value: `${benchmarkResult.avg_ms}ms`, color: "#10b981" },
-                          { label: "Min", value: `${benchmarkResult.min_ms ?? "?"}ms`, color: "#10b981" },
-                          { label: "Max", value: `${benchmarkResult.max_ms ?? "?"}ms`, color: (benchmarkResult.max_ms ?? 0) > 10 ? "#f97316" : "#10b981" },
-                          { label: "Sub-10ms", value: benchmarkResult.all_under_10ms ? "100%" : "partial", color: benchmarkResult.all_under_10ms ? "#10b981" : "#ef4444" },
-                        ].map(m => (
-                          <div key={m.label} style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: m.color, fontFamily: "monospace" }}>{m.value}</div>
-                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>{m.label}</div>
+                          { key: "scanner", label: "🔎 RegScanner", sub: "regulations index", color: "#10b981", glow: "rgba(16,185,129,0.35)" },
+                          { key: "analyst", label: "📊 RiskAnalyst", sub: "transactions + violations", color: "#06b6d4", glow: "rgba(6,182,212,0.35)" },
+                        ].map(a => {
+                          const active = activeAgents.has(a.key);
+                          return (
+                            <div key={a.key} className="proof-node" style={{
+                              background: active ? `${a.glow.replace("0.35","0.12")}` : "rgba(255,255,255,0.03)",
+                              border: `1.5px solid ${active ? a.color : "rgba(255,255,255,0.1)"}`,
+                              padding: "12px 18px", borderRadius: 12, textAlign: "center", minWidth: 150,
+                              boxShadow: active ? `0 0 24px ${a.glow}, inset 0 0 16px ${a.glow.replace("0.35","0.06")}` : "none",
+                              animation: active ? "nodeActivate 1s ease infinite" : "none",
+                            }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: active ? a.color : "rgba(255,255,255,0.5)" }}>{a.label}</div>
+                              <div style={{ fontSize: 9, color: active ? `${a.color}aa` : "rgba(255,255,255,0.2)", marginTop: 4, fontFamily: "monospace" }}>
+                                {active ? (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: a.color, display: "inline-block", animation: "pulse 0.6s ease infinite" }} />
+                                    Querying Moss...
+                                  </span>
+                                ) : `Moss: ${a.sub}`}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Converge beam */}
+                      <svg width="200" height="24" style={{ overflow: "visible" }}>
+                        <line x1="50" y1="0" x2="100" y2="24" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3 3" style={{ animation: "flowDash 0.6s linear infinite" }} />
+                        <line x1="150" y1="0" x2="100" y2="24" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3 3" style={{ animation: "flowDash 0.6s linear infinite" }} />
+                        <circle cx="100" cy="24" r="3" fill="rgba(167,139,250,0.6)" style={{ animation: "pulse 1s ease infinite" }} />
+                      </svg>
+
+                      {/* Phase 2 Label */}
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: "rgba(139,92,246,0.7)", textTransform: "uppercase", marginBottom: 8 }}>🧠 Phase 2 · asyncio.gather</div>
+
+                      {/* Phase 2 Nodes */}
+                      <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+                        {[
+                          { key: "drafter", label: "📝 AuditDrafter", sub: "all 5 indexes", color: "#8b5cf6", glow: "rgba(139,92,246,0.35)" },
+                          { key: "escalation", label: "🚨 Escalation", sub: "all 5 indexes", color: "#ec4899", glow: "rgba(236,72,153,0.35)" },
+                        ].map(a => {
+                          const active = activeAgents.has(a.key);
+                          return (
+                            <div key={a.key} className="proof-node" style={{
+                              background: active ? `${a.glow.replace("0.35","0.12")}` : "rgba(255,255,255,0.03)",
+                              border: `1.5px solid ${active ? a.color : "rgba(255,255,255,0.1)"}`,
+                              padding: "12px 18px", borderRadius: 12, textAlign: "center", minWidth: 150,
+                              boxShadow: active ? `0 0 24px ${a.glow}, inset 0 0 16px ${a.glow.replace("0.35","0.06")}` : "none",
+                              animation: active ? "nodeActivate 1.2s ease infinite" : "none",
+                            }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: active ? a.color : "rgba(255,255,255,0.5)" }}>{a.label}</div>
+                              <div style={{ fontSize: 9, color: active ? `${a.color}aa` : "rgba(255,255,255,0.2)", marginTop: 4, fontFamily: "monospace" }}>
+                                {active ? (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: a.color, display: "inline-block", animation: "pulse 0.6s ease infinite" }} />
+                                    Synthesizing...
+                                  </span>
+                                ) : `Moss: ${a.sub}`}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Fan-in beam */}
+                      <svg width="200" height="24" style={{ overflow: "visible" }}>
+                        <line x1="50" y1="0" x2="100" y2="24" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3 3" style={{ animation: "flowDash 0.6s linear infinite" }} />
+                        <line x1="150" y1="0" x2="100" y2="24" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3 3" style={{ animation: "flowDash 0.6s linear infinite" }} />
+                      </svg>
+
+                      {/* Verdict Node */}
+                      <div className="proof-node" style={{
+                        background: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(139,92,246,0.18))",
+                        border: "1.5px solid rgba(16,185,129,0.5)",
+                        padding: "10px 28px", borderRadius: 99, fontSize: 12, fontWeight: 800,
+                        color: "#10b981", boxShadow: "0 0 32px rgba(16,185,129,0.2)",
+                      }}>
+                        ✅ Final Consensus Verdict
+                      </div>
+
+                      {/* Weight formula */}
+                      <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                        {[
+                          { label: "RegScanner", weight: "×40%", color: "#10b981" },
+                          { label: "RiskAnalyst", weight: "×60%", color: "#06b6d4" },
+                        ].map(w => (
+                          <div key={w.label} style={{ fontSize: 9, padding: "2px 10px", borderRadius: 99, background: `${w.color}14`, border: `1px solid ${w.color}30`, color: w.color, fontFamily: "monospace", fontWeight: 700 }}>
+                            {w.label} {w.weight}
                           </div>
                         ))}
                       </div>
-                      <div style={{ fontSize: 10, color: benchmarkResult.mode === "moss_live" ? "#10b981" : "#fbbf24", fontWeight: 700, marginTop: 4 }}>
-                        {benchmarkResult.mode_label || (benchmarkResult.mode === "moss_live" ? "🟢 Live Moss (in-process, zero network hop)" : "🟡 Mock keyword mode — set MOSS_PROJECT_ID/KEY for real proof")}
+                    </div>
+                  </div>
+                </GlassCard>
+
+                {/* ── Benchmark Metrics ── */}
+                <GlassCard style={{ padding: 20, position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, right: 0, width: 180, height: 180, background: "radial-gradient(circle, rgba(16,185,129,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "white", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>⚡</span> Moss Retrieval Benchmark
+                    <div style={{ marginLeft: "auto", fontSize: 9, padding: "2px 8px", borderRadius: 99, background: benchmarkResult?.mode === "moss_live" ? "rgba(16,185,129,0.15)" : "rgba(251,191,36,0.15)", color: benchmarkResult?.mode === "moss_live" ? "#10b981" : "#fbbf24", fontWeight: 700, border: `1px solid ${benchmarkResult?.mode === "moss_live" ? "rgba(16,185,129,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+                      {benchmarkResult?.mode === "moss_live" ? "🟢 LIVE" : "🟡 MOCK"}
+                    </div>
+                  </div>
+                  {benchmarkResult ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      {/* Big metric grid */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                        {[
+                          { label: "Avg Latency", value: `${benchmarkResult.avg_ms}ms`, color: "#10b981", icon: "⏱" },
+                          { label: "Min", value: `${benchmarkResult.min_ms ?? "?"}ms`, color: "#10b981", icon: "📉" },
+                          { label: "Max", value: `${benchmarkResult.max_ms ?? "?"}ms`, color: (benchmarkResult.max_ms ?? 0) > 10 ? "#f97316" : "#10b981", icon: "📈" },
+                          { label: "Sub-10ms", value: benchmarkResult.all_under_10ms ? "100%" : "partial", color: benchmarkResult.all_under_10ms ? "#10b981" : "#ef4444", icon: "🎯" },
+                        ].map((m, idx) => (
+                          <div key={m.label} className="proof-node" style={{ background: `${m.color}0a`, border: `1px solid ${m.color}25`, borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
+                            <div style={{ fontSize: 16, marginBottom: 4 }}>{m.icon}</div>
+                            <div className="proof-metric-val" style={{ fontSize: 18, fontWeight: 900, color: m.color, fontFamily: "JetBrains Mono, monospace", animationDelay: `${idx * 0.1}s` }}>{m.value}</div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginTop: 2, letterSpacing: 0.5 }}>{m.label}</div>
+                          </div>
+                        ))}
                       </div>
-                      {benchmarkResult.parallel_wall_clock_ms && (
-                        <div style={{ fontSize: 10, color: "#a78bfa" }}>⏱ 10 queries in parallel: {benchmarkResult.parallel_wall_clock_ms}ms wall-clock (asyncio.gather)</div>
-                      )}
+
+                      {/* Latency bar chart */}
                       {benchmarkResult.samples && (
-                        <div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Per-query latencies:</div>
-                          <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 32 }}>
+                        <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 10, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 10, fontWeight: 600 }}>Per-Query Latency Distribution</div>
+                          <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 44 }}>
                             {benchmarkResult.samples.map((s, i) => {
-                              const h = Math.max(6, Math.min(32, (s / 15) * 32));
+                              const h = Math.max(8, Math.min(44, (s / 15) * 44));
                               const c = s < 5 ? "#10b981" : s < 10 ? "#fbbf24" : "#ef4444";
-                              return <div key={i} title={`Query ${i+1}: ${s.toFixed(2)}ms`} style={{ flex: 1, height: h, background: c, borderRadius: 2 }} />;
+                              return (
+                                <div key={i} title={`Q${i+1}: ${s.toFixed(2)}ms`} style={{ flex: 1, position: "relative" }}>
+                                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: h, background: `linear-gradient(to top, ${c}, ${c}66)`, borderRadius: "3px 3px 0 0", transition: "height 0.5s cubic-bezier(0.34,1.56,0.64,1)", animationDelay: `${i * 0.05}s` }} />
+                                </div>
+                              );
                             })}
                           </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "rgba(255,255,255,0.2)", marginTop: 2 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "rgba(255,255,255,0.2)", marginTop: 6, fontFamily: "monospace" }}>
                             <span>Q1</span><span>Q5</span><span>Q10</span>
                           </div>
                         </div>
                       )}
+
+                      {benchmarkResult.parallel_wall_clock_ms && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.15)", borderRadius: 8, padding: "8px 12px" }}>
+                          <span style={{ fontSize: 14 }}>⚡</span>
+                          <div>
+                            <div style={{ fontSize: 11, color: "#c4b5fd", fontWeight: 700 }}>{benchmarkResult.parallel_wall_clock_ms}ms wall-clock</div>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)" }}>10 queries in parallel via asyncio.gather</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ) : <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Loading benchmark…</div>}
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {[140, 80, 110, 60].map((w, i) => (
+                        <div key={i} style={{ height: 14, borderRadius: 6, background: "rgba(255,255,255,0.04)", width: `${w}px`, animation: "shimmer 2s ease infinite", backgroundSize: "200% 100%", backgroundImage: "linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.09) 50%,rgba(255,255,255,0.04) 75%)" }} />
+                      ))}
+                    </div>
+                  )}
                 </GlassCard>
 
-                {/* Multi-Agent Architecture Proof */}
-                <GlassCard style={{ padding: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 16 }}>🕸️ Live Agent Execution Matrix</div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "10px 0" }}>
-                    
-                    {/* Input */}
-                    <div style={{ background: "rgba(255,255,255,0.05)", padding: "6px 16px", borderRadius: 99, fontSize: 10, border: "1px dashed rgba(255,255,255,0.2)" }}>
-                      Event Intake (WebSocket)
-                    </div>
-                    
-                    <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.2)" }} />
-
-                    {/* Phase 1 */}
-                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 1, textTransform: "uppercase" }}>Phase 1: Parallel Analysis</div>
-                    <div style={{ display: "flex", gap: 30 }}>
-                      {["scanner", "analyst"].map(agent => (
-                        <div key={agent} style={{
-                          background: activeAgents.has(agent) ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.02)",
-                          border: `1px solid ${activeAgents.has(agent) ? "#10b981" : "rgba(255,255,255,0.1)"}`,
-                          padding: "10px 20px", borderRadius: 8, textAlign: "center", minWidth: 140,
-                          transition: "all 0.3s",
-                          boxShadow: activeAgents.has(agent) ? "0 0 15px rgba(16,185,129,0.3)" : "none",
-                        }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: activeAgents.has(agent) ? "#10b981" : "#a78bfa" }}>
-                            {agent === "scanner" ? "RegScanner" : "RiskAnalyst"}
-                          </div>
-                          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
-                            {activeAgents.has(agent) ? "⚡ Querying Moss..." : "Idle"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.2)" }} />
-
-                    {/* Phase 2 */}
-                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 1, textTransform: "uppercase" }}>Phase 2: Parallel Resolution</div>
-                    <div style={{ display: "flex", gap: 30 }}>
-                      {["drafter", "escalation"].map(agent => (
-                        <div key={agent} style={{
-                          background: activeAgents.has(agent) ? "rgba(139,92,246,0.15)" : "rgba(255,255,255,0.02)",
-                          border: `1px solid ${activeAgents.has(agent) ? "#8b5cf6" : "rgba(255,255,255,0.1)"}`,
-                          padding: "10px 20px", borderRadius: 8, textAlign: "center", minWidth: 140,
-                          transition: "all 0.3s",
-                          boxShadow: activeAgents.has(agent) ? "0 0 15px rgba(139,92,246,0.3)" : "none",
-                        }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: activeAgents.has(agent) ? "#c4b5fd" : "#a78bfa" }}>
-                            {agent === "drafter" ? "AuditDrafter" : "ActionEngine"}
-                          </div>
-                          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
-                            {activeAgents.has(agent) ? "🧠 Synthesizing..." : "Idle"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.2)" }} />
-
-                    {/* Output */}
-                    <div style={{ background: "rgba(16,185,129,0.1)", padding: "6px 16px", borderRadius: 99, fontSize: 10, border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", fontWeight: 700 }}>
-                      Final Consensus Verdict
-                    </div>
-
+                {/* ── Consensus History ── */}
+                <GlassCard style={{ padding: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "white", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>🤝</span> Consensus Verdicts This Session
+                    {consensusLog.length > 0 && (
+                      <div style={{ marginLeft: "auto", fontSize: 9, padding: "2px 8px", borderRadius: 99, background: "rgba(167,139,250,0.1)", color: "#c4b5fd", fontWeight: 700, border: "1px solid rgba(167,139,250,0.2)" }}>
+                        {consensusLog.length} verdicts
+                      </div>
+                    )}
                   </div>
-                </GlassCard>
-
-                {/* Consensus History */}
-                <GlassCard style={{ padding: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>🤝 Consensus Verdicts This Session</div>
                   {consensusLog.length === 0 ? (
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>No events analyzed yet. Flag a compliance event to see consensus scoring.</div>
+                    <div style={{ textAlign: "center", padding: "24px 0" }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>⚖️</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>No events analyzed yet.</div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", marginTop: 4 }}>Flag a compliance event to see consensus scoring.</div>
+                    </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {consensusLog.map((c, i) => {
                         const lc: Record<string, string> = { CRITICAL: "#ef4444", HIGH: "#f97316", MEDIUM: "#fbbf24", LOW: "#10b981" };
                         const col = lc[c.risk_level] || "#a78bfa";
+                        const pct = c.risk_score;
                         return (
-                          <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 10px", background: `${col}08`, border: `1px solid ${col}25`, borderRadius: 8 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: col, minWidth: 70 }}>{c.risk_level}</div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: col, fontFamily: "monospace" }}>{c.risk_score}/100</div>
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>conf: {Math.round(c.confidence * 100)}%</div>
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginLeft: "auto" }}>{c.total_wall_ms}ms total</div>
+                          <div className="verdict-row" key={i} style={{ padding: "12px 14px", background: `${col}08`, border: `1px solid ${col}20`, borderRadius: 10, animationDelay: `${i * 0.05}s`, position: "relative", overflow: "hidden" }}>
+                            {/* Score bar background */}
+                            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: `${col}08`, transition: "width 1s ease" }} />
+                            <div style={{ position: "relative", display: "flex", gap: 12, alignItems: "center" }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: col, minWidth: 68, padding: "2px 8px", borderRadius: 99, background: `${col}18`, border: `1px solid ${col}30`, textAlign: "center" }}>{c.risk_level}</div>
+                              <div style={{ fontSize: 22, fontWeight: 900, color: col, fontFamily: "JetBrains Mono, monospace", lineHeight: 1 }}>{c.risk_score}<span style={{ fontSize: 11, opacity: 0.5 }}>/100</span></div>
+                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>conf: {Math.round(c.confidence * 100)}%</div>
+                              <div style={{ marginLeft: "auto", fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>{c.total_wall_ms}ms</div>
+                            </div>
                           </div>
                         );
                       })}
@@ -1403,23 +1519,47 @@ export default function WorkspacePage() {
                   )}
                 </GlassCard>
 
-                {/* Architecture Proof */}
-                <GlassCard style={{ padding: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10 }}>🏗️ Pipeline Architecture</div>
-                  <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>{`Phase 1 — asyncio.gather (PARALLEL)
-├─ 🔎 RegScanner  → Moss: regulations index
-└─ 📊 RiskAnalyst → Moss: transactions + violations
-         ↓ phase1_summary → phase2
-Phase 2 — asyncio.gather (PARALLEL)
-├─ 📝 AuditDrafter → Moss: all 5 indexes
-└─ 🚨 Escalation  → Moss: all 5 indexes
-         ↓ consensus scoring
-Consensus = RegScanner×40% + RiskAnalyst×60%
-Action   = score≥ 75 → REPORT_TO_FIU
-           score≥ 50 → BLOCK
-           score≥ 25 → FLAG
-           score < 25 → APPROVE`}</pre>
+                {/* ── Architecture Code Block ── */}
+                <GlassCard style={{ padding: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "white", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>🏗️</span> Pipeline Architecture
+                    <div style={{ marginLeft: "auto", fontSize: 9, padding: "2px 8px", borderRadius: 99, background: "rgba(16,185,129,0.1)", color: "#10b981", fontWeight: 700, border: "1px solid rgba(16,185,129,0.2)", fontFamily: "monospace" }}>Python · asyncio</div>
+                  </div>
+                  <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 10, padding: "16px 18px", border: "1px solid rgba(255,255,255,0.06)", position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 10, right: 14, fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>pipeline.py</div>
+                    <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1.8, margin: 0, whiteSpace: "pre-wrap" }}>{[
+                      { txt: "Phase 1 — ", hi: "asyncio.gather", col: "#c4b5fd", rest: " (PARALLEL)" },
+                      { txt: "├─ 🔎 RegScanner  → Moss: ", hi: "regulations", col: "#10b981", rest: " index" },
+                      { txt: "└─ 📊 RiskAnalyst → Moss: ", hi: "transactions", col: "#06b6d4", rest: " + violations" },
+                      { txt: "         ↓ phase1_summary → phase2", hi: "", col: "", rest: "" },
+                      { txt: "Phase 2 — ", hi: "asyncio.gather", col: "#c4b5fd", rest: " (PARALLEL)" },
+                      { txt: "├─ 📝 AuditDrafter → Moss: ", hi: "all 5 indexes", col: "#8b5cf6", rest: "" },
+                      { txt: "└─ 🚨 Escalation  → Moss: ", hi: "all 5 indexes", col: "#ec4899", rest: "" },
+                      { txt: "         ↓ consensus scoring", hi: "", col: "", rest: "" },
+                      { txt: "Consensus = RegScanner×", hi: "40%", col: "#10b981", rest: " + RiskAnalyst×" },
+                    ].map((l, i) => (
+                      <span key={i} style={{ display: "block" }}>
+                        {l.txt}<span style={{ color: l.col || "inherit", fontWeight: l.hi ? 700 : 400 }}>{l.hi}</span>{l.rest}
+                      </span>
+                    ))}
+                    </pre>
+                  </div>
+                  {/* Action Thresholds */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 12 }}>
+                    {[
+                      { score: "≥75", action: "REPORT TO FIU", color: "#ef4444" },
+                      { score: "≥50", action: "BLOCK", color: "#f97316" },
+                      { score: "≥25", action: "FLAG", color: "#fbbf24" },
+                      { score: "<25", action: "APPROVE", color: "#10b981" },
+                    ].map(t => (
+                      <div key={t.action} className="proof-node" style={{ background: `${t.color}0a`, border: `1px solid ${t.color}25`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: t.color, fontFamily: "JetBrains Mono, monospace" }}>{t.score}</div>
+                        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.35)", marginTop: 3, letterSpacing: 0.5, fontWeight: 700 }}>{t.action}</div>
+                      </div>
+                    ))}
+                  </div>
                 </GlassCard>
+
               </div>
             )}          </div>
 
