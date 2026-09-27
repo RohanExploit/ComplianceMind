@@ -104,10 +104,20 @@ async def call_backend_risk_summary() -> dict | None:
         return {"error": str(e)}
 
 
-def format_result(data: dict, description: str) -> str:
-    """Format the /api/flag response into a rich Telegram message."""
+def esc(text: str) -> str:
+    """Escape HTML special characters for Telegram HTML parse mode."""
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def format_result(data: dict, description: str) -> tuple[str, str]:
+    """Format the /api/flag response. Returns (text, parse_mode)."""
     if "error" in data:
-        return f"❌ *Error*\n`{data['error']}`"
+        return f"❌ <b>Error</b>\n<code>{esc(data['error'])}</code>", "HTML"
 
     c = data.get("consensus", {})
     agents = data.get("responses", [])
@@ -125,28 +135,31 @@ def format_result(data: dict, description: str) -> str:
     filled = round(score / 10)
     bar = "█" * filled + "░" * (10 - filled)
 
-    # Agent summary (top 2)
+    # Agent summary (top 3)
     agent_lines = ""
     for ag in agents[:3]:
-        name = ag.get("agent", "?")
+        name = esc(ag.get("agent", "?"))
         ag_score = ag.get("risk_score", 0)
-        content = ag.get("content", "")[:120].replace("\n", " ")
-        agent_lines += f"\n  *{name}* `{ag_score}/100` — {content}…"
+        content = esc(ag.get("content", "")[:100].replace("\n", " "))
+        agent_lines += f"\n  <b>{name}</b> <code>{ag_score}/100</code> — {content}…"
+
+    desc_short = esc(description[:80]) + ("…" if len(description) > 80 else "")
 
     msg = (
-        f"{emoji} *ComplianceMind Verdict*\n"
+        f"{emoji} <b>ComplianceMind Verdict</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📋 *Event:* _{description[:80]}{'…' if len(description) > 80 else ''}_\n\n"
-        f"⚠️ *Risk Level:* `{risk}`\n"
-        f"📊 *Score:* `{score}/100`  `{bar}`\n"
-        f"🎯 *Confidence:* `{conf}%`\n"
-        f"⚡ *Action:* `{action_label}`\n"
-        f"⏱ *Pipeline:* `{total_ms}ms`\n"
-        f"🆔 *Task ID:* `{task_id}`\n"
-        f"\n👥 *Agent Analysis:*{agent_lines}\n"
-        f"\n🔗 [View Full Dashboard](https://compliance-mind.vercel.app)"
+        f"📋 <i>{desc_short}</i>\n\n"
+        f"⚠️ <b>Risk Level:</b> <code>{esc(risk)}</code>\n"
+        f"📊 <b>Score:</b> <code>{score}/100</code>  <code>{bar}</code>\n"
+        f"🎯 <b>Confidence:</b> <code>{conf}%</code>\n"
+        f"⚡ <b>Action:</b> <code>{esc(action_label)}</code>\n"
+        f"⏱ <b>Pipeline:</b> <code>{total_ms}ms</code>\n"
+        f"🆔 <b>Task ID:</b> <code>{esc(task_id)}</code>\n"
+        f"\n👥 <b>Agent Analysis:</b>{agent_lines}\n"
+        f"\n🔗 <a href='https://compliance-mind.vercel.app'>View Full Dashboard</a>"
     )
-    return msg
+    return msg, "HTML"
+
 
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────
@@ -303,7 +316,7 @@ async def analyze_event(
     )
 
     result = await call_backend_flag(description, priority)
-    formatted = format_result(result, description)
+    formatted, parse_mode = format_result(result, description)
 
     keyboard2 = [[
         InlineKeyboardButton("🔄 Re-analyze as CRITICAL", callback_data=f"analyze:critical:{description[:200]}"),
@@ -312,7 +325,7 @@ async def analyze_event(
 
     await thinking_msg.edit_text(
         formatted,
-        parse_mode="Markdown",
+        parse_mode=parse_mode,
         reply_markup=InlineKeyboardMarkup(keyboard2),
         disable_web_page_preview=True,
     )
@@ -344,8 +357,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
         result = await call_backend_flag(description, priority)
-        formatted = format_result(result, description)
-        await thinking_msg.edit_text(formatted, parse_mode="Markdown", disable_web_page_preview=True)
+        formatted, parse_mode = format_result(result, description)
+        await thinking_msg.edit_text(formatted, parse_mode=parse_mode, disable_web_page_preview=True)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

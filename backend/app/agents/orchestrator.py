@@ -514,7 +514,7 @@ class ComplianceOrchestrator:
 
         print(
             f"[PIPELINE] [{task_id}] "
-            f"Phase1={p1_wall_ms}ms ‖ Phase2={p2_wall_ms}ms ‖ Total={total_wall_ms}ms | "
+            f"Phase1={p1_wall_ms}ms | Phase2={p2_wall_ms}ms | Total={total_wall_ms}ms | "
             f"Consensus={risk_level} ({consensus_score}/100, conf={confidence:.0%}) | "
             f"Action={recommended_action}"
         )
